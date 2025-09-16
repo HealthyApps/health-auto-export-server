@@ -53,6 +53,7 @@ In order to use this project, you will need:
 4. Configure the automation with the following settings:
    - Automation Type: `REST API`
    - URL: `http://your-computer-ip:3001/api/data`
+   - Headers: `api-key` `sk-xxx` (write token in `.env`)
    - Data Type: `Health Metrics` or `Workouts` (create separate automations for each if you want to sync different data types)
    - Export Format: `JSON`
    - Aggregate Data: `Enabled` 🟢

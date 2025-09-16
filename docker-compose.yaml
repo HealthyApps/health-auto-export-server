@@ -42,6 +42,8 @@ services:
       - MONGO_DB=${MONGO_DB}
       - MONGO_USERNAME=${MONGO_USERNAME}
       - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - READ_TOKEN=${READ_TOKEN}
+      - WRITE_TOKEN=${WRITE_TOKEN}
     depends_on:
       - hae-mongo
     networks:

@@ -15,24 +15,23 @@ import {
   createMetricModel,
 } from '../models/Metric';
 import { MetricName } from '../models/MetricName';
+import { filterFields, parseDate } from '../utils';
 
 export const getMetrics = async (req: Request, res: Response) => {
   try {
-    const { from, to } = req.query;
+    const { from, to, include, exclude } = req.query;
     const selectedMetric = req.params.selected_metric as MetricName;
 
     if (!selectedMetric) {
       throw new Error('No metric selected');
     }
 
-    const fromDate = new Date(Number(from));
-    const toDate = new Date(Number(to));
-
-    const isDate = (date: Date) => !isNaN(date.getTime());
+    const fromDate = parseDate(from as string);
+    const toDate = parseDate(to as string);
 
     let query = {};
 
-    if (isDate(fromDate) && isDate(toDate)) {
+    if (fromDate && toDate) {
       query = {
         date: {
           $gte: fromDate,
@@ -55,6 +54,11 @@ export const getMetrics = async (req: Request, res: Response) => {
         break;
       default:
         metrics = await createMetricModel(selectedMetric).find(query).lean();
+    }
+
+    // Process include/exclude filters if provided
+    if (include || exclude) {
+      metrics = metrics.map(metric => filterFields(metric, include, exclude));
     }
 
     console.log(metrics);

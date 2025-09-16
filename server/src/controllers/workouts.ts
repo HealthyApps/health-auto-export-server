@@ -3,21 +3,20 @@ import { Request, Response } from 'express';
 import { IngestData } from '../models/IngestData';
 import { IngestResponse } from '../models/IngestResponse';
 import { RouteModel, WorkoutModel, mapWorkoutData, mapRoute } from '../models/Workout';
+import { filterFields, parseDate } from '../utils';
 
 export const getWorkouts = async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, include, exclude } = req.query;
 
-    const fromDate = new Date(Number(startDate));
-    const toDate = new Date(Number(endDate));
+    const fromDate = parseDate(startDate as string);
+    const toDate = parseDate(endDate as string);
 
     console.log(fromDate, toDate);
 
-    const isDate = (date: Date) => !isNaN(date.getTime());
-
     let query = {};
 
-    if (isDate(fromDate) && isDate(toDate)) {
+    if (fromDate && toDate) {
       query = {
         start: {
           $gte: fromDate,
@@ -49,8 +48,14 @@ export const getWorkouts = async (req: Request, res: Response) => {
         return mappedWorkouts;
       });
 
+    // Process include/exclude filters if provided
+    let processedWorkouts = workouts;
+    if (include || exclude) {
+      processedWorkouts = workouts.map(workout => filterFields(workout, include, exclude));
+    }
+
     console.log(`${workouts.length} workouts fetched`);
-    res.status(200).json(workouts);
+    res.status(200).json(processedWorkouts);
   } catch (error) {
     console.error('Error fetching workouts:', error);
     res.status(500).json({ error: 'Error fetching workouts' });
@@ -60,6 +65,7 @@ export const getWorkouts = async (req: Request, res: Response) => {
 export const getWorkout = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const { include, exclude } = req.query;
 
     console.log('Fetching workout details for ID:', id);
     const workoutMetadata = await WorkoutModel.findOne({ workoutId: id })
@@ -102,7 +108,12 @@ export const getWorkout = async (req: Request, res: Response) => {
         });
       });
 
-    const ret = { ...workoutMetadata, route: route || [] };
+    let ret = { ...workoutMetadata, route: route || [] };
+
+    // Process include/exclude filters if provided
+    if (include || exclude) {
+      ret = filterFields(ret, include, exclude);
+    }
 
     console.log(`Workout ${id} fetched with ${route?.length ?? 0} locations`);
     res.status(200).json(ret);

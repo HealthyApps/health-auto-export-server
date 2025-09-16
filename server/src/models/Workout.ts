@@ -214,5 +214,9 @@ export function mapRoute(data: WorkoutData) {
   };
 }
 
-export const WorkoutModel = mongoose.model<IWorkout>('Workout', WorkoutSchema, 'workouts');
-export const RouteModel = mongoose.model<IRoute>('Route', routeSchema, 'workout_routes');
+// Safely create or retrieve models to avoid "Cannot overwrite model" error
+export const WorkoutModel = mongoose.models.Workout || 
+  mongoose.model<IWorkout>('Workout', WorkoutSchema, 'workouts');
+
+export const RouteModel = mongoose.models.Route || 
+  mongoose.model<IRoute>('Route', routeSchema, 'workout_routes');

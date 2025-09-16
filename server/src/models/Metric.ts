@@ -169,21 +169,28 @@ const SleepSchema: Schema = new Schema({
 SleepSchema.index({ date: 1, source: 1 }, { unique: true });
 
 export const createMetricModel = (name: MetricName) => {
-  return mongoose.model<IMetric>(String(name), BaseMetricSchema, String(name));
+  const modelName = String(name);
+  return mongoose.models[modelName] || mongoose.model<IMetric>(modelName, BaseMetricSchema, modelName);
 };
 
-export const BloodPressureModel = mongoose.model<IBloodPressureMetric>(
-  'BloodPressure',
-  BloodPressureSchema,
-  'blood_pressure',
-);
-export const HeartRateModel = mongoose.model<IHeartRateMetric>(
-  'HeartRate',
-  HeartRateSchema,
-  'heart_rate',
-);
-export const SleepModel = mongoose.model<ISleepMetric>(
-  'SleepAnalysis',
-  SleepSchema,
-  'sleep_analysis',
-);
+// Safely create or retrieve models to avoid "Cannot overwrite model" error
+export const BloodPressureModel = mongoose.models.BloodPressure || 
+  mongoose.model<IBloodPressureMetric>(
+    'BloodPressure',
+    BloodPressureSchema,
+    'blood_pressure',
+  );
+
+export const HeartRateModel = mongoose.models.HeartRate ||
+  mongoose.model<IHeartRateMetric>(
+    'HeartRate',
+    HeartRateSchema,
+    'heart_rate',
+  );
+
+export const SleepModel = mongoose.models.SleepAnalysis ||
+  mongoose.model<ISleepMetric>(
+    'SleepAnalysis',
+    SleepSchema,
+    'sleep_analysis',
+  );

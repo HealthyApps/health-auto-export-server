@@ -42,6 +42,7 @@ In order to use this project, you will need:
 2. Select and install `Infinity` plugin. After installation, select `Add new data source`
 3. Give the data source a name, for example `Health Auto Export`
 4. In the `URL, Headers & Params` section, set the `Base URL` to `http://host.docker.internal:3001`
+   - Add a header with Key: `api-key` and Value: `sk-xxx` (value of `READ_TOKEN` in `.env`)
 5. Select `Save & test` to complete the data source setup
 6. This data source can now be used to create dashboards using the synced data
 

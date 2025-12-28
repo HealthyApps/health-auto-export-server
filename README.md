@@ -76,6 +76,7 @@ If you are unfamiliar with Grafana, you can import pre-configured dashboards to 
 2. Select `New` and then `Import`
 3. Upload the dashboard JSON file from the `dashboard-examples` folder, or copy the JSON into the `Import via dashboard JSON model` text area
 4. You can find a full list of metrics available in [`MetricName.ts`](https://github.com/HealthyApps/health-auto-export-server/blob/4163bb5e8aa8d2cdac2a9971c164c0fa46604866/server/src/models/MetricName.ts#L1). These can be used in the datasource URL in order to fetch each metric from the database.
+5. Make sure you update each imported dashboard individually to update the datasoruce uid to the one created when installing `Infinity`. The uid can be found in the plugin URL `http://localhost:3000/connections/datasources/edit/your-uid-here`. To do so, click `Edit`, then `Settings`, then `JSON Model` and update the uid values (within panels/datasource)
 
 # Troubleshooting
 

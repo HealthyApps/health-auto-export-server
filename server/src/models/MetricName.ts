@@ -14,7 +14,7 @@ export enum MetricName {
   FLIGHTS_CLIMBED = 'flights_climbed',
   WHEELCHAIR_PUSH_COUNT = 'wheelchair_push_count',
   SWIM_STROKE_COUNT = 'swim_stroke_count',
-  VO2_MAX = 'vo2max',
+  VO2_MAX = 'vo2_max',
   PHYSICAL_EFFORT = 'physical_effort',
   STEP_COUNT = 'step_count',
   CYCLING_CADENCE = 'cycling_cadence',

@@ -85,6 +85,13 @@ If you encounter issues:
 2. Ensure Docker is running
 3. If you're still stuck, feel free to reach out using the support options below.
 
+## Flushing the database
+
+In case you need or want to flush the database content but keep its structure, run the following command:
+`docker exec <container_id> /bin/bash -c 'mongo <database_name> -u <mongo_username> -p <mongo_password> --authenticationDatabase admin --eval "db.dropDatabase();"'`
+
+You can retrieve the container id value by running the `docker ps` command. The other 3 values are defined as part of Step 1 of the setup phase.
+
 ## Support
 
 If you need assistance:

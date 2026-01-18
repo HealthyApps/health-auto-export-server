@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 
 import { IngestData } from '../models/IngestData';
 import { IngestResponse } from '../models/IngestResponse';
-import { MedicationModel, mapMedicationData } from '../models/Medication';
+import { MedicationModel, mapMedicationData, getMedicationId } from '../models/Medication';
 import { filterFields, parseDate } from '../utils';
 
 export const getMedications = async (req: Request, res: Response) => {
@@ -55,7 +55,7 @@ export const saveMedications = async (ingestData: IngestData): Promise<IngestRes
     const medicationOperations = medications.map((medication) => ({
       updateOne: {
         filter: {
-          'codings.code': medication.codings[0]?.code,
+          medicationId: getMedicationId(medication),
           start: new Date(medication.start),
         },
         update: {

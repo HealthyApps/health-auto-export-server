@@ -20,6 +20,7 @@ export interface MedicationData {
 }
 
 export interface IMedication extends Document {
+  medicationId: string; // Computed: codings[0].code or displayText
   start: Date;
   end: Date;
   displayText: string;
@@ -45,6 +46,7 @@ const CodingSchema = new Schema<MedicationCoding>(
 
 const MedicationSchema = new Schema<IMedication>(
   {
+    medicationId: { type: String, required: true },
     start: { type: Date, required: true },
     end: { type: Date, required: true },
     displayText: { type: String, required: true },
@@ -52,21 +54,27 @@ const MedicationSchema = new Schema<IMedication>(
     dosage: { type: Number, required: true },
     units: { type: String, required: true },
     isArchived: { type: Boolean, required: true },
-    codings: { type: [CodingSchema], required: true },
+    codings: { type: [CodingSchema], required: false },
     scheduledDosage: { type: Number, required: false },
     scheduledDate: { type: Date, required: false },
   },
   { timestamps: true },
 );
 
-// Unique index on medication code + start time to prevent duplicate dose logs
+// Unique index on medicationId + start time to prevent duplicate dose logs
 MedicationSchema.index(
-  { 'codings.code': 1, start: 1 },
+  { medicationId: 1, start: 1 },
   { unique: true },
 );
 
+// Returns the medication identifier: RxNorm code if available, otherwise displayText
+export function getMedicationId(data: MedicationData): string {
+  return data.codings?.[0]?.code || data.displayText;
+}
+
 export function mapMedicationData(data: MedicationData) {
   return {
+    medicationId: getMedicationId(data),
     start: new Date(data.start),
     end: new Date(data.end),
     displayText: data.displayText,
@@ -74,7 +82,7 @@ export function mapMedicationData(data: MedicationData) {
     dosage: data.dosage,
     units: data.units,
     isArchived: data.isArchived,
-    codings: data.codings,
+    codings: data.codings || [],
     scheduledDosage: data.scheduledDosage,
     scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : undefined,
   };

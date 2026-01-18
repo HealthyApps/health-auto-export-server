@@ -20,7 +20,7 @@ export interface MedicationData {
 }
 
 export interface IMedication extends Document {
-  medicationId: string; // Computed: codings[0].code or displayText
+  medicationId: string; // Computed: prefers RxNorm code, then sorted codings, then displayText
   start: Date;
   end: Date;
   displayText: string;
@@ -67,9 +67,24 @@ MedicationSchema.index(
   { unique: true },
 );
 
-// Returns the medication identifier: RxNorm code if available, otherwise displayText
+const RXNORM_SYSTEM = 'http://www.nlm.nih.gov/research/umls/rxnorm';
+
+// Returns the medication identifier, preferring RxNorm code for stability
+// when multiple coding systems are present (order may vary between syncs)
 export function getMedicationId(data: MedicationData): string {
-  return data.codings?.[0]?.code || data.displayText;
+  if (!data.codings?.length) {
+    return data.displayText;
+  }
+
+  // Prefer RxNorm coding for consistent identification
+  const rxnorm = data.codings.find((c) => c.system === RXNORM_SYSTEM);
+  if (rxnorm) {
+    return rxnorm.code;
+  }
+
+  // Fall back to first coding, sorted by system for stability
+  const sorted = [...data.codings].sort((a, b) => a.system.localeCompare(b.system));
+  return sorted[0].code;
 }
 
 export function mapMedicationData(data: MedicationData) {

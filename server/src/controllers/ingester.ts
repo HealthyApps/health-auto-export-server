@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 
 import { saveMetrics } from './metrics';
 import { saveWorkouts } from './workouts';
+import { saveMedications } from './medications';
 import { IngestData } from '../models/IngestData';
 import { IngestResponse } from '../models/IngestResponse';
 
@@ -15,12 +16,13 @@ export const ingestData = async (req: Request, res: Response) => {
       throw new Error('No data provided');
     }
 
-    const [metricsResponse, workoutsResponse] = await Promise.all([
+    const [metricsResponse, workoutsResponse, medicationsResponse] = await Promise.all([
       saveMetrics(data),
       saveWorkouts(data),
+      saveMedications(data),
     ]);
 
-    response = { ...metricsResponse, ...workoutsResponse };
+    response = { ...metricsResponse, ...workoutsResponse, ...medicationsResponse };
 
     const hasErrors = Object.values(response).some((r) => !r.success);
     const allFailed = Object.values(response).every((r) => !r.success);

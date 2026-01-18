@@ -9,4 +9,9 @@ export interface IngestResponse {
     message?: string;
     error?: string;
   };
+  medications?: {
+    success: boolean;
+    message?: string;
+    error?: string;
+  };
 }

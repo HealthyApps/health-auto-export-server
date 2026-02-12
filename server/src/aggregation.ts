@@ -112,19 +112,17 @@ function reconstructDate(granularity: Granularity) {
   return { $dateFromParts: spec };
 }
 
-function buildBaseMetricPipeline(
+function buildMeanMetricPipeline(
   matchQuery: Record<string, any>,
   granularity: Granularity,
-  method: AggregationMethod.SUM | AggregationMethod.MEAN,
 ) {
-  const accumulator = method === AggregationMethod.SUM ? '$sum' : '$avg';
   return [
     { $match: matchQuery },
     { $sort: { date: 1 as const } },
     {
       $group: {
         _id: dateParts(granularity),
-        qty: { [accumulator]: '$qty' },
+        qty: { $avg: '$qty' },
         units: { $first: '$units' },
       },
     },
@@ -138,6 +136,94 @@ function buildBaseMetricPipeline(
     },
     { $sort: { date: 1 as const } },
   ];
+}
+
+function periodKey(date: Date, granularity: Granularity): string {
+  const d = new Date(date);
+  const base = `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
+  if (granularity === 'hourly') {
+    return `${base}-${d.getUTCHours()}`;
+  }
+  return base;
+}
+
+function periodDate(date: Date, granularity: Granularity): Date {
+  const d = new Date(date);
+  if (granularity === 'hourly') {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours()));
+  }
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+// Minimum number of records in a period before outlier detection kicks in.
+// With fewer records, all values are summed directly.
+const OUTLIER_MIN_RECORDS = 5;
+
+// A record with qty exceeding (median * OUTLIER_FACTOR) is treated as a
+// bulk "catch-up" summary that overlaps with the minute-level data.
+const OUTLIER_FACTOR = 10;
+
+function sumWithoutBulkOutliers(values: number[]): number {
+  const total = values.reduce((a, b) => a + b, 0);
+  if (values.length < OUTLIER_MIN_RECORDS) return total;
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  if (median === 0) return total;
+
+  const threshold = median * OUTLIER_FACTOR;
+  const filtered = values.filter((v) => v <= threshold);
+  return filtered.length > 0 ? filtered.reduce((a, b) => a + b, 0) : total;
+}
+
+async function aggregateSumDeduped(
+  model: Model<any>,
+  matchQuery: Record<string, any>,
+  granularity: Granularity,
+): Promise<any[]> {
+  // Step 1: Deduplicate by exact timestamp — take max qty per timestamp.
+  // This eliminates duplicate records from different sources (e.g. Ultrahuman
+  // ring creating a second record with an identical value at the same timestamp).
+  const deduped: Array<{ _id: Date; qty: number; units: string }> = await model.aggregate([
+    { $match: matchQuery },
+    { $sort: { date: 1 as const } },
+    {
+      $group: {
+        _id: '$date',
+        qty: { $max: '$qty' },
+        units: { $first: '$units' },
+      },
+    },
+    { $sort: { _id: 1 as const } },
+  ]);
+
+  // Step 2: Group by period and remove bulk outliers before summing.
+  // Apple Health can export both a cumulative "catch-up" record (large qty at
+  // a single timestamp) AND minute-level records for the same time span.
+  // Summing both inflates the total by ~2x.  The outlier filter removes the
+  // catch-up record when sufficient minute-level data exists in the period.
+  const groups = new Map<string, { date: Date; values: number[]; units: string }>();
+  for (const rec of deduped) {
+    const date = new Date(rec._id);
+    const key = periodKey(date, granularity);
+    let group = groups.get(key);
+    if (!group) {
+      group = { date: periodDate(date, granularity), values: [], units: rec.units };
+      groups.set(key, group);
+    }
+    group.values.push(rec.qty);
+  }
+
+  const results: Array<{ date: Date; qty: number; units: string }> = [];
+  for (const group of groups.values()) {
+    results.push({
+      date: group.date,
+      qty: sumWithoutBulkOutliers(group.values),
+      units: group.units,
+    });
+  }
+
+  return results.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
 function buildHeartRatePipeline(
@@ -210,6 +296,10 @@ export async function aggregateMetrics(
     return model.find(matchQuery).lean();
   }
 
+  if (method === AggregationMethod.SUM) {
+    return aggregateSumDeduped(model, matchQuery, granularity);
+  }
+
   let pipeline;
   switch (method) {
     case AggregationMethod.HEART_RATE:
@@ -219,7 +309,7 @@ export async function aggregateMetrics(
       pipeline = buildBloodPressurePipeline(matchQuery, granularity);
       break;
     default:
-      pipeline = buildBaseMetricPipeline(matchQuery, granularity, method);
+      pipeline = buildMeanMetricPipeline(matchQuery, granularity);
   }
 
   return model.aggregate(pipeline);

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 
+import { Granularity, aggregateMetrics } from '../aggregation';
 import { IngestData } from '../models/IngestData';
 import { IngestResponse } from '../models/IngestResponse';
 import {
@@ -19,17 +20,22 @@ import { filterFields, parseDate } from '../utils';
 
 export const getMetrics = async (req: Request, res: Response) => {
   try {
-    const { from, to, include, exclude } = req.query;
+    const { from, to, include, exclude, granularity } = req.query;
     const selectedMetric = req.params.selected_metric as MetricName;
 
     if (!selectedMetric) {
       throw new Error('No metric selected');
     }
 
+    if (granularity && granularity !== 'daily' && granularity !== 'hourly') {
+      res.status(400).json({ error: 'Invalid granularity. Must be "daily" or "hourly".' });
+      return;
+    }
+
     const fromDate = parseDate(from as string);
     const toDate = parseDate(to as string);
 
-    let query = {};
+    let query: Record<string, any> = {};
 
     if (fromDate && toDate) {
       query = {
@@ -42,23 +48,40 @@ export const getMetrics = async (req: Request, res: Response) => {
 
     let metrics;
 
-    switch (selectedMetric) {
-      case MetricName.BLOOD_PRESSURE:
-        metrics = await BloodPressureModel.find(query).lean();
-        break;
-      case MetricName.HEART_RATE:
-        metrics = await HeartRateModel.find(query).lean();
-        break;
-      case MetricName.SLEEP_ANALYSIS:
-        metrics = await SleepModel.find(query).lean();
-        break;
-      default:
-        metrics = await createMetricModel(selectedMetric).find(query).lean();
+    if (granularity) {
+      const g = granularity as Granularity;
+      switch (selectedMetric) {
+        case MetricName.BLOOD_PRESSURE:
+          metrics = await aggregateMetrics(BloodPressureModel, selectedMetric, g, query);
+          break;
+        case MetricName.HEART_RATE:
+          metrics = await aggregateMetrics(HeartRateModel, selectedMetric, g, query);
+          break;
+        case MetricName.SLEEP_ANALYSIS:
+          metrics = await aggregateMetrics(SleepModel, selectedMetric, g, query);
+          break;
+        default:
+          metrics = await aggregateMetrics(createMetricModel(selectedMetric), selectedMetric, g, query);
+      }
+    } else {
+      switch (selectedMetric) {
+        case MetricName.BLOOD_PRESSURE:
+          metrics = await BloodPressureModel.find(query).lean();
+          break;
+        case MetricName.HEART_RATE:
+          metrics = await HeartRateModel.find(query).lean();
+          break;
+        case MetricName.SLEEP_ANALYSIS:
+          metrics = await SleepModel.find(query).lean();
+          break;
+        default:
+          metrics = await createMetricModel(selectedMetric).find(query).lean();
+      }
     }
 
     // Process include/exclude filters if provided
     if (include || exclude) {
-      metrics = metrics.map(metric => filterFields(metric, include, exclude));
+      metrics = metrics.map((metric: any) => filterFields(metric, include, exclude));
     }
 
     console.log(metrics);

@@ -4,6 +4,7 @@ import express from 'express';
 import mongodb from './database/mongodb';
 import ingesterRouter from './routes/ingester';
 import metricsRouter from './routes/metrics';
+import workoutLogRouter from './routes/workoutLog';
 import workoutsRouter from './routes/workouts';
 import { requireReadAuth, requireWriteAuth } from './middleware/auth';
 
@@ -29,6 +30,7 @@ app.use('/api/data', requireWriteAuth, ingesterRouter);
 // Apply read auth middleware to data retrieval routes
 app.use('/api/metrics', requireReadAuth, metricsRouter);
 app.use('/api/workouts', requireReadAuth, workoutsRouter);
+app.use('/api/workout-log', workoutLogRouter);
 
 app.get('/', (req: express.Request, res: express.Response) => {
   res.json({ message: 'Hello world!' });

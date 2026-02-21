@@ -1179,12 +1179,11 @@ function app() {
       for (let d = 1; d <= lastDay.getDate(); d++) {
         const dateStr = `${this.calYear}-${String(this.calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const cellDate = new Date(this.calYear, this.calMonth, d);
-        const isPast = cellDate <= today;
-        const isAfterActivation = activatedAt ? cellDate >= activatedAt : isPast;
+        const isAfterActivation = activatedAt ? cellDate >= activatedAt : true;
         cells.push({
           key: dateStr,
           day: d,
-          stackName: (isPast && isAfterActivation) ? activeName : '',
+          stackName: isAfterActivation ? activeName : '',
           isToday: dateStr === todayStr,
         });
       }

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supplement Tracker</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+  <style>
+    :root { --pico-font-size: 15px; }
+    nav { margin-bottom: 1rem; }
+    nav ul { padding: 0; }
+    .tab-btn { cursor: pointer; }
+    .tab-btn[aria-current="true"] { font-weight: bold; }
+    .slot-group { margin-bottom: 1.5rem; }
+    .slot-group h4 { margin-bottom: 0.5rem; text-transform: capitalize; }
+    .pill-badge {
+      display: inline-block; padding: 0.15rem 0.5rem; border-radius: 1rem;
+      font-size: 0.8rem; font-weight: 600; color: #fff;
+    }
+    .stock-green { background: #2e7d32; }
+    .stock-yellow { background: #f9a825; color: #333; }
+    .stock-red { background: #c62828; }
+    .log-entry { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; border-bottom: 1px solid var(--pico-muted-border-color); }
+    .log-meta { font-size: 0.85rem; color: var(--pico-muted-color); }
+    .stack-item { display: flex; justify-content: space-between; align-items: center; padding: 0.3rem 0; }
+    .stack-item button { margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; }
+    .toast {
+      position: fixed; bottom: 1rem; right: 1rem; padding: 0.75rem 1.25rem;
+      border-radius: 0.5rem; color: #fff; font-weight: 600; z-index: 999;
+      transition: opacity 0.3s;
+    }
+    .toast-success { background: #2e7d32; }
+    .toast-error { background: #c62828; }
+    .auth-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); display: flex; align-items: center;
+      justify-content: center; z-index: 1000;
+    }
+    .auth-box { background: var(--pico-background-color); padding: 2rem; border-radius: 0.5rem; max-width: 400px; width: 90%; }
+  </style>
+</head>
+<body>
+<main class="container" x-data="app()" x-init="init()">
+
+  <!-- Auth overlay -->
+  <template x-if="!apiKey">
+    <div class="auth-overlay">
+      <div class="auth-box">
+        <h3>Supplement Tracker</h3>
+        <p>Enter your API key to continue.</p>
+        <input type="password" x-model="apiKeyInput" placeholder="sk-..." @keyup.enter="saveApiKey()">
+        <button @click="saveApiKey()">Save</button>
+      </div>
+    </div>
+  </template>
+
+  <!-- Toast -->
+  <template x-if="toast.show">
+    <div class="toast" :class="toast.type === 'success' ? 'toast-success' : 'toast-error'"
+         x-text="toast.msg" x-transition></div>
+  </template>
+
+  <h2>Supplement Tracker</h2>
+
+  <!-- Tabs -->
+  <nav>
+    <ul>
+      <li><a class="tab-btn" :aria-current="tab === 'today'" @click="tab = 'today'; loadToday()">Today</a></li>
+      <li><a class="tab-btn" :aria-current="tab === 'log'" @click="tab = 'log'; loadSupplements()">Log Dose</a></li>
+      <li><a class="tab-btn" :aria-current="tab === 'inventory'" @click="tab = 'inventory'; loadInventory()">Inventory</a></li>
+      <li><a class="tab-btn" :aria-current="tab === 'history'" @click="tab = 'history'; loadHistory()">History</a></li>
+    </ul>
+  </nav>
+
+  <!-- TODAY TAB -->
+  <section x-show="tab === 'today'">
+    <h3 x-text="'Today — ' + (todayData.day || '...')"></h3>
+    <template x-for="slot in ['morning', 'noon', 'night']" :key="slot">
+      <div class="slot-group" x-show="todayData[slot] && todayData[slot].length > 0">
+        <h4 x-text="slot"></h4>
+        <template x-for="item in (todayData[slot] || [])" :key="item.supplement_id">
+          <div class="stack-item">
+            <span>
+              <strong x-text="item.supplement?.name || 'Unknown'"></strong>
+              <small x-text="'(' + item.dose_quantity + ' ' + (item.supplement?.dose_unit || '') + ')'"></small>
+            </span>
+            <button class="outline" @click="quickLogFromStack(item, slot)"
+                    :aria-busy="item._logging">Log</button>
+          </div>
+        </template>
+      </div>
+    </template>
+    <p x-show="!todayData.morning?.length && !todayData.noon?.length && !todayData.night?.length">
+      No stack defined for today. Set one up via the API.
+    </p>
+  </section>
+
+  <!-- LOG DOSE TAB -->
+  <section x-show="tab === 'log'">
+    <h3>Log a Dose</h3>
+    <form @submit.prevent="submitLog()">
+      <label>Supplement
+        <select x-model="logForm.supplement_id" required>
+          <option value="">Select...</option>
+          <template x-for="s in supplements" :key="s._id">
+            <option :value="s._id" x-text="s.name + ' (' + s.default_dose + ' ' + s.dose_unit + ')'"></option>
+          </template>
+        </select>
+      </label>
+      <div class="grid">
+        <label>Dose quantity
+          <input type="number" x-model.number="logForm.dose_quantity" min="0" step="any" required>
+        </label>
+        <label>Slot
+          <select x-model="logForm.slot" required>
+            <option value="morning">Morning</option>
+            <option value="noon">Noon</option>
+            <option value="night">Night</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+      </div>
+      <button type="submit" :aria-busy="logForm.submitting">Log Dose</button>
+    </form>
+  </section>
+
+  <!-- INVENTORY TAB -->
+  <section x-show="tab === 'inventory'">
+    <h3>Inventory</h3>
+    <figure>
+      <table>
+        <thead>
+          <tr>
+            <th>Supplement</th>
+            <th>Remaining</th>
+            <th>Purchased</th>
+            <th>Unit Cost</th>
+            <th>Purchase Date</th>
+            <th>Expires</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="inv in inventory" :key="inv._id">
+            <tr>
+              <td x-text="inv.supplement_id?.name || '—'"></td>
+              <td>
+                <span class="pill-badge"
+                      :class="inv.pills_remaining > 30 ? 'stock-green' : inv.pills_remaining > 10 ? 'stock-yellow' : 'stock-red'"
+                      x-text="inv.pills_remaining"></span>
+              </td>
+              <td x-text="inv.quantity_purchased"></td>
+              <td x-text="'$' + (inv.unit_cost || 0).toFixed(2)"></td>
+              <td x-text="fmtDate(inv.purchase_date)"></td>
+              <td x-text="inv.expiration_date ? fmtDate(inv.expiration_date) : '—'"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </figure>
+    <p x-show="inventory.length === 0">No inventory records.</p>
+  </section>
+
+  <!-- HISTORY TAB -->
+  <section x-show="tab === 'history'">
+    <h3>Recent Doses (7 days)</h3>
+    <template x-for="log in history" :key="log._id">
+      <div class="log-entry">
+        <div>
+          <strong x-text="log.supplement_id?.name || 'Unknown'"></strong>
+          <small x-text="'— ' + log.dose_quantity + ' ' + (log.supplement_id?.dose_unit || '') + ' (' + log.slot + ')'"></small>
+        </div>
+        <div class="log-meta" x-text="fmtDateTime(log.timestamp)"></div>
+      </div>
+    </template>
+    <p x-show="history.length === 0">No doses logged in the last 7 days.</p>
+  </section>
+
+</main>
+
+<script>
+function app() {
+  return {
+    tab: 'today',
+    apiKey: localStorage.getItem('supp_api_key') || '',
+    apiKeyInput: '',
+    toast: { show: false, msg: '', type: 'success' },
+    todayData: { day: '', morning: [], noon: [], night: [] },
+    supplements: [],
+    inventory: [],
+    history: [],
+    logForm: { supplement_id: '', dose_quantity: 1, slot: 'morning', submitting: false },
+
+    init() {
+      if (this.apiKey) this.loadToday();
+    },
+
+    saveApiKey() {
+      if (!this.apiKeyInput) return;
+      this.apiKey = this.apiKeyInput;
+      localStorage.setItem('supp_api_key', this.apiKey);
+      this.apiKeyInput = '';
+      this.loadToday();
+    },
+
+    headers() {
+      return { 'Content-Type': 'application/json', 'api-key': this.apiKey };
+    },
+
+    async api(method, path, body) {
+      const opts = { method, headers: this.headers() };
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch('/api' + path, opts);
+      if (res.status === 401) {
+        localStorage.removeItem('supp_api_key');
+        this.apiKey = '';
+        throw new Error('Unauthorized');
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    },
+
+    showToast(msg, type = 'success') {
+      this.toast = { show: true, msg, type };
+      setTimeout(() => { this.toast.show = false; }, 2500);
+    },
+
+    fmtDate(d) {
+      if (!d) return '';
+      return new Date(d).toLocaleDateString();
+    },
+
+    fmtDateTime(d) {
+      if (!d) return '';
+      return new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    },
+
+    async loadToday() {
+      try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        this.todayData = await this.api('GET', `/supplement-stack/today?tz=${encodeURIComponent(tz)}`);
+      } catch (e) {
+        if (e.message !== 'Unauthorized') {
+          this.todayData = { day: new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase(), morning: [], noon: [], night: [] };
+        }
+      }
+    },
+
+    async loadSupplements() {
+      try {
+        this.supplements = await this.api('GET', '/supplements?active=true');
+      } catch (e) { if (e.message !== 'Unauthorized') this.showToast(e.message, 'error'); }
+    },
+
+    async loadInventory() {
+      try {
+        this.inventory = await this.api('GET', '/supplement-inventory?active=true');
+      } catch (e) { if (e.message !== 'Unauthorized') this.showToast(e.message, 'error'); }
+    },
+
+    async loadHistory() {
+      try {
+        this.history = await this.api('GET', '/supplement-logs');
+      } catch (e) { if (e.message !== 'Unauthorized') this.showToast(e.message, 'error'); }
+    },
+
+    async quickLogFromStack(item, slot) {
+      item._logging = true;
+      try {
+        const result = await this.api('POST', '/supplement-logs', {
+          supplement_id: item.supplement_id?._id || item.supplement_id,
+          dose_quantity: item.dose_quantity,
+          slot,
+        });
+        const pillsMsg = result.inventory_decremented ? ` (${result.pills_remaining} left)` : '';
+        this.showToast(`Logged ${item.supplement?.name || 'dose'}${pillsMsg}`);
+      } catch (e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        item._logging = false;
+      }
+    },
+
+    async submitLog() {
+      if (!this.logForm.supplement_id) return;
+      this.logForm.submitting = true;
+      try {
+        const result = await this.api('POST', '/supplement-logs', {
+          supplement_id: this.logForm.supplement_id,
+          dose_quantity: this.logForm.dose_quantity,
+          slot: this.logForm.slot,
+        });
+        const pillsMsg = result.inventory_decremented ? ` (${result.pills_remaining} left)` : '';
+        this.showToast(`Dose logged${pillsMsg}`);
+        this.logForm.supplement_id = '';
+        this.logForm.dose_quantity = 1;
+      } catch (e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        this.logForm.submitting = false;
+      }
+    },
+  };
+}
+</script>
+</body>
+</html>

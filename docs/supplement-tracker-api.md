@@ -12,9 +12,11 @@
 | **POST** | `/api/supplements` | Create a supplement definition |
 | **PUT** | `/api/supplements/:id` | Update a supplement |
 | **DELETE** | `/api/supplements/:id` | Deactivate a supplement (soft delete) |
-| **GET** | `/api/supplement-stack` | Get full weekly stack (populated with supplement names) |
+| **GET** | `/api/supplement-stack` | Get active weekly stack (populated with supplement names) |
+| **GET** | `/api/supplement-stack/all` | List all stacks (name, active, timestamps) |
 | **GET** | `/api/supplement-stack/today?tz=America/Denver` | Today's stack with slot details |
-| **PUT** | `/api/supplement-stack` | Replace entire weekly stack |
+| **PUT** | `/api/supplement-stack` | Create/update stack by name (activates it, deactivates others) |
+| **DELETE** | `/api/supplement-stack/:id` | Delete an inactive stack |
 | **POST** | `/api/supplement-logs` | Log a dose (by supplement ID) |
 | **POST** | `/api/supplement-logs/quick` | Log a dose (by supplement name — easiest) |
 | **GET** | `/api/supplement-logs?start_date=...&end_date=...` | Get dose logs (default: last 7 days) |
@@ -78,6 +80,7 @@ curl -X POST http://hae-server/api/supplement-inventory \
   -H "api-key: sk-..." \
   -d '{
     "supplement_id": "...",
+    "brand": "Thorne",
     "quantity_purchased": 120,
     "unit_cost": 0.15,
     "purchase_date": "2026-02-21",
@@ -85,6 +88,7 @@ curl -X POST http://hae-server/api/supplement-inventory \
   }'
 ```
 
+- `brand` — optional, e.g. `"Thorne"`, `"NOW Foods"`
 - `pills_remaining` is auto-set to `quantity_purchased`
 - `expiration_date` is optional
 - Inventory auto-decrements when doses are logged (FIFO by purchase date)
@@ -113,6 +117,64 @@ curl -X PUT http://hae-server/api/supplement-stack \
 - Each day has 3 slots: `morning`, `noon`, `night`
 - Days not included default to empty slots
 - Any previous active stack is deactivated (only one active stack at a time)
+- To create a blank stack: `PUT` with just `{"name": "Week 2"}` — empty days are auto-filled
+
+## Multiple Stacks (Cycling)
+
+List all stacks:
+
+```bash
+curl http://hae-server/api/supplement-stack/all -H "api-key: sk-..."
+```
+
+Returns `[{_id, name, active, createdAt, updatedAt}, ...]` sorted active-first then by name.
+
+Switch active stack (re-activates an existing stack by name):
+
+```bash
+curl -X PUT http://hae-server/api/supplement-stack \
+  -H "Content-Type: application/json" \
+  -H "api-key: sk-..." \
+  -d '{"name": "Week 2"}'
+```
+
+Delete an inactive stack:
+
+```bash
+curl -X DELETE http://hae-server/api/supplement-stack/<id> -H "api-key: sk-..."
+```
+
+Returns 400 if you try to delete the active stack.
+
+## Edit Inventory
+
+Update any fields on an existing inventory record:
+
+```bash
+curl -X PUT http://hae-server/api/supplement-inventory/<id> \
+  -H "Content-Type: application/json" \
+  -H "api-key: sk-..." \
+  -d '{"pills_remaining": 45, "brand": "NOW Foods"}'
+```
+
+All fields are optional — only send what you want to change: `pills_remaining`, `quantity_purchased`, `unit_cost`, `brand`, `purchase_date`, `expiration_date`.
+
+## Stock Awareness
+
+The UI flags supplements that have no active inventory (pills_remaining > 0):
+- **Today tab**: out-of-stock items are dimmed with "out of stock" badge; Log button disabled
+- **Stack grid**: out-of-stock rows show "no stock" badge
+- **Stack editor**: supplement dropdown warns "⚠ no stock"
+
+To check stock programmatically, query active inventory and cross-reference:
+
+```bash
+# All active inventory (pills > 0)
+curl "http://hae-server/api/supplement-inventory?active=true" -H "api-key: sk-..."
+
+# Low stock (≤10 pills remaining)
+curl "http://hae-server/api/supplement-inventory?low_stock=true" -H "api-key: sk-..."
+```
 
 ## Query Logs
 

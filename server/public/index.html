@@ -83,6 +83,38 @@
     .add-entry button { margin: 0; padding: 0.3rem 0.6rem; font-size: 0.8rem; white-space: nowrap; }
     .copy-actions { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
     .copy-actions button { margin: 0; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+
+    /* Inventory inline edit */
+    .inv-edit-row td { background: var(--pico-card-background-color); }
+    .inv-edit-row input { margin: 0; padding: 0.3rem; font-size: 0.85rem; }
+    .inv-edit-actions { display: flex; gap: 0.3rem; }
+    .inv-edit-actions button { margin: 0; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+
+    /* Stack selector */
+    .stack-selector { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    .stack-selector select { margin: 0; max-width: 250px; }
+    .stack-selector button { margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; white-space: nowrap; }
+    .stack-chip { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 0.3rem; font-size: 0.75rem; font-weight: 600; }
+    .stack-chip-active { background: #2e7d32; color: #fff; }
+    .stack-chip-inactive { background: var(--pico-muted-border-color); color: var(--pico-muted-color); }
+
+    /* Month calendar */
+    .month-calendar { margin-top: 1.5rem; }
+    .month-nav { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+    .month-nav button { margin: 0; padding: 0.3rem 0.6rem; font-size: 0.85rem; }
+    .month-nav h4 { margin: 0; flex: 1; text-align: center; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; font-size: 0.8rem; }
+    .cal-header { text-align: center; font-weight: 600; padding: 0.3rem; background: var(--pico-card-background-color); }
+    .cal-day { text-align: center; padding: 0.4rem 0.2rem; border: 1px solid var(--pico-muted-border-color); border-radius: 0.25rem; min-height: 3rem; }
+    .cal-day-num { font-weight: 600; font-size: 0.85rem; }
+    .cal-day-stack { font-size: 0.7rem; color: var(--pico-muted-color); margin-top: 0.15rem; }
+    .cal-day-today { background: rgba(46, 125, 50, 0.1); border-color: #2e7d32; }
+    .cal-day-empty { border: none; }
+
+    /* New stack modal */
+    .new-stack-inline { display: flex; gap: 0.5rem; align-items: end; margin-bottom: 1rem; }
+    .new-stack-inline input { margin: 0; font-size: 0.85rem; padding: 0.3rem; flex: 1; }
+    .new-stack-inline button { margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -112,7 +144,7 @@
       <li><a class="tab-btn" :aria-current="tab === 'today'" @click="tab = 'today'; loadToday()">Today</a></li>
       <li><a class="tab-btn" :aria-current="tab === 'log'" @click="tab = 'log'; loadSupplements()">Log Dose</a></li>
       <li><a class="tab-btn" :aria-current="tab === 'inventory'" @click="tab = 'inventory'; loadInventory(); loadSupplements()">Inventory</a></li>
-      <li><a class="tab-btn" :aria-current="tab === 'stack'" @click="tab = 'stack'; loadStack(); loadSupplements()">Stack</a></li>
+      <li><a class="tab-btn" :aria-current="tab === 'stack'" @click="tab = 'stack'; loadStack(); loadAllStacks(); loadSupplements()">Stack</a></li>
       <li><a class="tab-btn" :aria-current="tab === 'history'" @click="tab = 'history'; loadHistoryRange()">History</a></li>
     </ul>
   </nav>
@@ -182,21 +214,66 @@
             <th>Unit Cost</th>
             <th>Purchase Date</th>
             <th>Expires</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
           <template x-for="inv in inventory" :key="inv._id">
             <tr>
-              <td x-text="inv.supplement_id?.name || '—'"></td>
-              <td>
-                <span class="pill-badge"
-                      :class="inv.pills_remaining > 30 ? 'stock-green' : inv.pills_remaining > 10 ? 'stock-yellow' : 'stock-red'"
-                      x-text="inv.pills_remaining"></span>
-              </td>
-              <td x-text="inv.quantity_purchased"></td>
-              <td x-text="'$' + (inv.unit_cost || 0).toFixed(2)"></td>
-              <td x-text="fmtDate(inv.purchase_date)"></td>
-              <td x-text="inv.expiration_date ? fmtDate(inv.expiration_date) : '—'"></td>
+              <!-- Display row -->
+              <template x-if="editingInvId !== inv._id">
+                <td x-text="inv.supplement_id?.name || '—'"></td>
+              </template>
+              <template x-if="editingInvId !== inv._id">
+                <td>
+                  <span class="pill-badge"
+                        :class="inv.pills_remaining > 30 ? 'stock-green' : inv.pills_remaining > 10 ? 'stock-yellow' : 'stock-red'"
+                        x-text="inv.pills_remaining"></span>
+                </td>
+              </template>
+              <template x-if="editingInvId !== inv._id">
+                <td x-text="inv.quantity_purchased"></td>
+              </template>
+              <template x-if="editingInvId !== inv._id">
+                <td x-text="'$' + (inv.unit_cost || 0).toFixed(2)"></td>
+              </template>
+              <template x-if="editingInvId !== inv._id">
+                <td x-text="fmtDate(inv.purchase_date)"></td>
+              </template>
+              <template x-if="editingInvId !== inv._id">
+                <td x-text="inv.expiration_date ? fmtDate(inv.expiration_date) : '—'"></td>
+              </template>
+              <template x-if="editingInvId !== inv._id">
+                <td><button class="outline" style="margin:0;padding:0.2rem 0.5rem;font-size:0.8rem;" @click="startEditInv(inv)">Edit</button></td>
+              </template>
+
+              <!-- Edit row -->
+              <template x-if="editingInvId === inv._id">
+                <td x-text="inv.supplement_id?.name || '—'"></td>
+              </template>
+              <template x-if="editingInvId === inv._id">
+                <td><input type="number" x-model.number="editInvForm.pills_remaining" min="0" step="1" style="width:70px;margin:0;padding:0.2rem;font-size:0.85rem;"></td>
+              </template>
+              <template x-if="editingInvId === inv._id">
+                <td><input type="number" x-model.number="editInvForm.quantity_purchased" min="1" step="1" style="width:70px;margin:0;padding:0.2rem;font-size:0.85rem;"></td>
+              </template>
+              <template x-if="editingInvId === inv._id">
+                <td><input type="number" x-model.number="editInvForm.unit_cost" min="0" step="0.01" style="width:80px;margin:0;padding:0.2rem;font-size:0.85rem;"></td>
+              </template>
+              <template x-if="editingInvId === inv._id">
+                <td><input type="date" x-model="editInvForm.purchase_date" style="margin:0;padding:0.2rem;font-size:0.85rem;"></td>
+              </template>
+              <template x-if="editingInvId === inv._id">
+                <td><input type="date" x-model="editInvForm.expiration_date" style="margin:0;padding:0.2rem;font-size:0.85rem;"></td>
+              </template>
+              <template x-if="editingInvId === inv._id">
+                <td>
+                  <div class="inv-edit-actions">
+                    <button @click="saveEditInv()" :aria-busy="editInvSaving" style="margin:0;padding:0.2rem 0.5rem;font-size:0.8rem;">Save</button>
+                    <button class="outline secondary" @click="cancelEditInv()" style="margin:0;padding:0.2rem 0.5rem;font-size:0.8rem;">Cancel</button>
+                  </div>
+                </td>
+              </template>
             </tr>
           </template>
         </tbody>
@@ -240,6 +317,28 @@
   <!-- STACK TAB -->
   <section x-show="tab === 'stack'">
     <h3 x-text="stackData ? 'Stack — ' + (stackData.name || 'Active') : 'Weekly Stack'"></h3>
+
+    <!-- Stack Selector -->
+    <div class="stack-selector" x-show="allStacks.length > 0">
+      <select x-model="selectedStackId" @change="onStackSelect()">
+        <template x-for="s in allStacks" :key="s._id">
+          <option :value="s._id" x-text="s.name + (s.active ? ' (active)' : '')"></option>
+        </template>
+      </select>
+      <button class="outline" @click="activateSelectedStack()" :aria-busy="stackActivating"
+              x-show="selectedStackId && !isSelectedStackActive()">Activate</button>
+      <button class="outline secondary" @click="deleteSelectedStack()"
+              x-show="selectedStackId && !isSelectedStackActive()">Delete</button>
+      <button class="outline" @click="showNewStackForm = !showNewStackForm"
+              x-text="showNewStackForm ? 'Cancel' : 'New Stack'"></button>
+    </div>
+
+    <!-- New Stack inline form -->
+    <div class="new-stack-inline" x-show="showNewStackForm">
+      <input type="text" x-model="newStackName" placeholder="Stack name (e.g. Week 2)">
+      <button @click="createNewStack()" :aria-busy="newStackCreating">Create</button>
+    </div>
+
     <template x-if="stackGrid.length > 0">
       <figure>
         <table class="stack-grid">
@@ -279,6 +378,30 @@
       <span class="slot-indicator slot-m">M</span> Morning &nbsp;
       <span class="slot-indicator slot-n">N</span> Noon &nbsp;
       <span class="slot-indicator slot-ni">Ni</span> Night
+    </div>
+
+    <!-- Month Calendar View -->
+    <div class="month-calendar" x-show="allStacks.length > 0">
+      <div class="month-nav">
+        <button class="outline" @click="shiftCalMonth(-1)">&#9664;</button>
+        <h4 x-text="calMonthLabel()"></h4>
+        <button class="outline" @click="shiftCalMonth(1)">&#9654;</button>
+      </div>
+      <div class="cal-grid">
+        <template x-for="dh in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="dh">
+          <div class="cal-header" x-text="dh"></div>
+        </template>
+        <template x-for="cell in calendarCells" :key="cell.key">
+          <div class="cal-day" :class="{ 'cal-day-today': cell.isToday, 'cal-day-empty': !cell.day }">
+            <template x-if="cell.day">
+              <div>
+                <div class="cal-day-num" x-text="cell.day"></div>
+                <div class="cal-day-stack" x-text="cell.stackName || ''"></div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
     </div>
 
     <!-- Edit toggle -->
@@ -413,6 +536,11 @@ function app() {
       expiration_date: '', submitting: false,
     },
 
+    // Inventory inline editing
+    editingInvId: null,
+    editInvForm: { pills_remaining: 0, quantity_purchased: 0, unit_cost: 0, purchase_date: '', expiration_date: '' },
+    editInvSaving: false,
+
     // Stack view
     stackData: null,
     stackGrid: [],
@@ -421,6 +549,19 @@ function app() {
     stackSaving: false,
     editDay: 'monday',
     stackEdit: null,
+
+    // Multi-stack
+    allStacks: [],
+    selectedStackId: '',
+    stackActivating: false,
+    showNewStackForm: false,
+    newStackName: '',
+    newStackCreating: false,
+
+    // Month calendar
+    calMonth: new Date().getMonth(),
+    calYear: new Date().getFullYear(),
+
     addEntryForm: {
       morning: { supplement_id: '', dose_quantity: 1 },
       noon: { supplement_id: '', dose_quantity: 1 },
@@ -528,6 +669,45 @@ function app() {
         this.showToast(e.message, 'error');
       } finally {
         this.invForm.submitting = false;
+      }
+    },
+
+    // --- Inventory inline editing ---
+    startEditInv(inv) {
+      this.editingInvId = inv._id;
+      this.editInvForm = {
+        pills_remaining: inv.pills_remaining,
+        quantity_purchased: inv.quantity_purchased,
+        unit_cost: inv.unit_cost || 0,
+        purchase_date: inv.purchase_date ? new Date(inv.purchase_date).toISOString().split('T')[0] : '',
+        expiration_date: inv.expiration_date ? new Date(inv.expiration_date).toISOString().split('T')[0] : '',
+      };
+    },
+
+    cancelEditInv() {
+      this.editingInvId = null;
+    },
+
+    async saveEditInv() {
+      this.editInvSaving = true;
+      try {
+        const body = {
+          pills_remaining: this.editInvForm.pills_remaining,
+          quantity_purchased: this.editInvForm.quantity_purchased,
+          unit_cost: this.editInvForm.unit_cost,
+          purchase_date: this.editInvForm.purchase_date,
+        };
+        if (this.editInvForm.expiration_date) {
+          body.expiration_date = this.editInvForm.expiration_date;
+        }
+        await this.api('PUT', `/supplement-inventory/${this.editingInvId}`, body);
+        this.showToast('Inventory updated');
+        this.editingInvId = null;
+        this.loadInventory();
+      } catch (e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        this.editInvSaving = false;
       }
     },
 
@@ -667,6 +847,140 @@ function app() {
       } finally {
         this.stackSaving = false;
       }
+    },
+
+    // --- Multi-stack management ---
+    async loadAllStacks() {
+      try {
+        this.allStacks = await this.api('GET', '/supplement-stack/all');
+        // Select the active stack by default
+        const active = this.allStacks.find(s => s.active);
+        if (active) this.selectedStackId = active._id;
+        else if (this.allStacks.length > 0) this.selectedStackId = this.allStacks[0]._id;
+      } catch (e) {
+        if (e.message !== 'Unauthorized') this.allStacks = [];
+      }
+    },
+
+    isSelectedStackActive() {
+      const s = this.allStacks.find(s => s._id === this.selectedStackId);
+      return s ? s.active : false;
+    },
+
+    async onStackSelect() {
+      // Load the selected stack's full data to show in the grid
+      const selected = this.allStacks.find(s => s._id === this.selectedStackId);
+      if (selected && selected.active) {
+        // Already loaded as the active stack
+        return;
+      }
+      // For inactive stacks, we need to fetch full data - use the existing getStack which
+      // only returns active. For non-active, just show a message.
+      if (selected && !selected.active) {
+        this.stackData = null;
+        this.stackGrid = [];
+      }
+    },
+
+    async activateSelectedStack() {
+      const selected = this.allStacks.find(s => s._id === this.selectedStackId);
+      if (!selected || selected.active) return;
+
+      this.stackActivating = true;
+      try {
+        // Fetch the full stack data, then PUT to activate it
+        // The PUT endpoint upserts by name and sets active
+        await this.api('PUT', '/supplement-stack', { name: selected.name });
+        this.showToast(`Activated "${selected.name}"`);
+        await Promise.all([this.loadStack(), this.loadAllStacks()]);
+      } catch (e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        this.stackActivating = false;
+      }
+    },
+
+    async deleteSelectedStack() {
+      const selected = this.allStacks.find(s => s._id === this.selectedStackId);
+      if (!selected || selected.active) return;
+
+      if (!confirm(`Delete stack "${selected.name}"? This cannot be undone.`)) return;
+
+      try {
+        await this.api('DELETE', `/supplement-stack/${selected._id}`);
+        this.showToast(`Deleted "${selected.name}"`);
+        await this.loadAllStacks();
+        // Load the active stack
+        this.loadStack();
+      } catch (e) {
+        this.showToast(e.message, 'error');
+      }
+    },
+
+    async createNewStack() {
+      if (!this.newStackName.trim()) {
+        this.showToast('Stack name is required', 'error');
+        return;
+      }
+      this.newStackCreating = true;
+      try {
+        // PUT creates/upserts and activates
+        await this.api('PUT', '/supplement-stack', { name: this.newStackName.trim() });
+        this.showToast(`Created & activated "${this.newStackName.trim()}"`);
+        this.newStackName = '';
+        this.showNewStackForm = false;
+        await Promise.all([this.loadStack(), this.loadAllStacks()]);
+      } catch (e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        this.newStackCreating = false;
+      }
+    },
+
+    // --- Month calendar ---
+    calMonthLabel() {
+      return new Date(this.calYear, this.calMonth, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    },
+
+    shiftCalMonth(dir) {
+      this.calMonth += dir;
+      if (this.calMonth > 11) { this.calMonth = 0; this.calYear++; }
+      if (this.calMonth < 0) { this.calMonth = 11; this.calYear--; }
+    },
+
+    get calendarCells() {
+      const cells = [];
+      const firstDay = new Date(this.calYear, this.calMonth, 1);
+      const lastDay = new Date(this.calYear, this.calMonth + 1, 0);
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+
+      // Day of week for first day (0=Sun). Convert to Mon=0 base.
+      let startDow = firstDay.getDay() - 1;
+      if (startDow < 0) startDow = 6;
+
+      // Empty leading cells
+      for (let i = 0; i < startDow; i++) {
+        cells.push({ key: 'e' + i, day: 0, stackName: '', isToday: false });
+      }
+
+      // Find active stack name
+      const activeStack = this.allStacks.find(s => s.active);
+      const activeName = activeStack ? activeStack.name : '';
+
+      for (let d = 1; d <= lastDay.getDate(); d++) {
+        const dateStr = `${this.calYear}-${String(this.calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const cellDate = new Date(this.calYear, this.calMonth, d);
+        const isPast = cellDate <= today;
+        cells.push({
+          key: dateStr,
+          day: d,
+          stackName: isPast ? activeName : '',
+          isToday: dateStr === todayStr,
+        });
+      }
+
+      return cells;
     },
 
     // --- History with compliance ---

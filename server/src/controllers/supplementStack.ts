@@ -4,6 +4,37 @@ import { SupplementStackModel } from '../models/SupplementStack';
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
 
+export const getAllStacks = async (req: Request, res: Response) => {
+  try {
+    const stacks = await SupplementStackModel.find({})
+      .select('name active createdAt updatedAt')
+      .sort({ active: -1, name: 1 })
+      .lean();
+
+    res.status(200).json(stacks);
+  } catch (error) {
+    console.error('Error fetching all stacks:', error);
+    res.status(500).json({ error: 'Error fetching supplement stacks' });
+  }
+};
+
+export const deleteStack = async (req: Request, res: Response) => {
+  try {
+    const stack = await SupplementStackModel.findById(req.params.id);
+    if (!stack) {
+      return res.status(404).json({ error: 'Stack not found' });
+    }
+    if (stack.active) {
+      return res.status(400).json({ error: 'Cannot delete the active stack' });
+    }
+    await SupplementStackModel.findByIdAndDelete(req.params.id);
+    res.status(200).json({ deleted: true });
+  } catch (error) {
+    console.error('Error deleting stack:', error);
+    res.status(500).json({ error: 'Error deleting supplement stack' });
+  }
+};
+
 export const getStack = async (req: Request, res: Response) => {
   try {
     const stack = await SupplementStackModel.findOne({ active: true })

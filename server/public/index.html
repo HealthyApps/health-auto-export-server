@@ -580,6 +580,16 @@
         <input type="text" x-model="stackEdit.name" placeholder="e.g. Daily Stack v2">
       </label>
 
+      <!-- Lifecycle fields -->
+      <div class="grid">
+        <label>Starts At
+          <input type="date" x-model="stackEdit.startsAt">
+        </label>
+        <label>Duration (weeks)
+          <input type="number" x-model.number="stackEdit.durationWeeks" min="1" step="1" placeholder="Indefinite">
+        </label>
+      </div>
+
       <!-- Day selector tabs -->
       <div class="day-tabs">
         <template x-for="d in ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']" :key="d">
@@ -1015,7 +1025,11 @@ function app() {
     startEditStack() {
       if (this.stackData) {
         // Deep clone current stack into editable form (extract raw IDs)
-        const edit = { name: this.stackData.name || '' };
+        const edit = {
+          name: this.stackData.name || '',
+          startsAt: this.stackData.startsAt ? new Date(this.stackData.startsAt).toISOString().split('T')[0] : '',
+          durationWeeks: this.stackData.durationWeeks || null,
+        };
         for (const day of DAYS_ORDER) {
           edit[day] = { morning: [], noon: [], night: [] };
           const src = this.stackData[day];
@@ -1029,7 +1043,7 @@ function app() {
         }
         this.stackEdit = edit;
       } else {
-        this.stackEdit = { name: '', ...this.emptyWeek() };
+        this.stackEdit = { name: '', startsAt: '', durationWeeks: null, ...this.emptyWeek() };
       }
       this.editDay = 'monday';
       this.stackEditing = true;

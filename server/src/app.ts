@@ -1,9 +1,15 @@
 import cors from 'cors';
 import express from 'express';
+import path from 'path';
 
 import mongodb from './database/mongodb';
 import ingesterRouter from './routes/ingester';
 import metricsRouter from './routes/metrics';
+import supplementsRouter from './routes/supplements';
+import supplementLogsRouter from './routes/supplementLogs';
+import supplementStackRouter from './routes/supplementStack';
+import supplementInventoryRouter from './routes/supplementInventory';
+import workoutLogRouter from './routes/workoutLog';
 import workoutsRouter from './routes/workouts';
 import { requireReadAuth, requireWriteAuth } from './middleware/auth';
 
@@ -15,7 +21,7 @@ mongodb.connect();
 const corsOptions = {
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'api-key'],
 };
 
 app.use(cors(corsOptions));
@@ -29,6 +35,19 @@ app.use('/api/data', requireWriteAuth, ingesterRouter);
 // Apply read auth middleware to data retrieval routes
 app.use('/api/metrics', requireReadAuth, metricsRouter);
 app.use('/api/workouts', requireReadAuth, workoutsRouter);
+app.use('/api/workout-log', workoutLogRouter);
+
+// Supplement tracker routes (auth applied per-route inside each file)
+app.use('/api/supplements', supplementsRouter);
+app.use('/api/supplement-logs', supplementLogsRouter);
+app.use('/api/supplement-stack', supplementStackRouter);
+app.use('/api/supplement-inventory', supplementInventoryRouter);
+
+// Supplement tracker web UI — config endpoint injects API key so users don't have to enter it
+app.get('/supplements/config.json', (req: express.Request, res: express.Response) => {
+  res.json({ apiKey: process.env.WRITE_TOKEN || '' });
+});
+app.use('/supplements', express.static(path.resolve(__dirname, '../public')));
 
 app.get('/', (req: express.Request, res: express.Response) => {
   res.json({ message: 'Hello world!' });

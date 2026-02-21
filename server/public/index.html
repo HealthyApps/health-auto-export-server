@@ -96,6 +96,8 @@
     .stack-selector button { margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; white-space: nowrap; }
     .stack-chip { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 0.3rem; font-size: 0.75rem; font-weight: 600; }
     .stack-chip-active { background: #2e7d32; color: #fff; }
+    .stack-chip-scheduled { background: #1565c0; color: #fff; }
+    .stack-chip-expired { background: var(--pico-muted-border-color); color: var(--pico-muted-color); }
     .stack-chip-inactive { background: var(--pico-muted-border-color); color: var(--pico-muted-color); }
 
     /* Month calendar */
@@ -107,19 +109,28 @@
     .cal-header { text-align: center; font-weight: 600; padding: 0.3rem; background: var(--pico-card-background-color); }
     .cal-day { text-align: center; padding: 0.4rem 0.2rem; border: 1px solid var(--pico-muted-border-color); border-radius: 0.25rem; min-height: 3rem; }
     .cal-day-num { font-weight: 600; font-size: 0.85rem; }
-    .cal-day-stack { font-size: 0.7rem; color: var(--pico-muted-color); margin-top: 0.15rem; }
+    .cal-day-stack { font-size: 0.7rem; margin-top: 0.15rem; }
+    .cal-day-stack-active { color: #2e7d32; }
+    .cal-day-stack-scheduled { color: #1565c0; font-style: italic; border-bottom: 1px dashed #1565c0; }
     .cal-day-today { background: rgba(46, 125, 50, 0.1); border-color: #2e7d32; }
     .cal-day-empty { border: none; }
 
-    /* New stack modal */
-    .new-stack-inline { display: flex; gap: 0.5rem; align-items: end; margin-bottom: 1rem; }
-    .new-stack-inline input { margin: 0; font-size: 0.85rem; padding: 0.3rem; flex: 1; }
+    /* New stack form */
+    .new-stack-inline { margin-bottom: 1rem; }
+    .new-stack-inline input, .new-stack-inline select { margin: 0; font-size: 0.85rem; padding: 0.3rem; }
     .new-stack-inline button { margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; white-space: nowrap; }
+    .new-stack-fields { display: flex; gap: 0.5rem; align-items: end; flex-wrap: wrap; }
+    .new-stack-fields > * { flex: 1; min-width: 120px; }
+    .new-stack-fields > button { flex: 0; }
 
     /* Out-of-stock warnings */
     .oos-badge { font-size: 0.7rem; font-weight: 600; color: #c62828; margin-left: 0.3rem; }
     .stack-item-oos { opacity: 0.6; }
     .stack-item-oos .oos-badge { opacity: 1; }
+
+    /* Stack meta info */
+    .stack-meta { font-size: 0.85rem; color: var(--pico-muted-color); margin-bottom: 1rem; }
+    .stack-meta span { margin-right: 1rem; }
   </style>
 </head>
 <body>
@@ -442,25 +453,44 @@
   <section x-show="tab === 'stack'">
     <h3 x-text="stackData ? 'Stack — ' + (stackData.name || 'Active') : 'Weekly Stack'"></h3>
 
+    <!-- Stack meta info (status, dates) -->
+    <div class="stack-meta" x-show="stackData">
+      <span class="stack-chip" :class="'stack-chip-' + (stackData?.status || 'inactive')"
+            x-text="stackData?.status || ''"></span>
+      <span x-show="stackData?.startsAt" x-text="'Started: ' + fmtDate(stackData?.startsAt)"></span>
+      <span x-show="stackData?.durationWeeks" x-text="stackData?.durationWeeks + ' week' + (stackData?.durationWeeks > 1 ? 's' : '')"></span>
+      <span x-show="stackData?.expiresAt" x-text="'Expires: ' + fmtDate(stackData?.expiresAt)"></span>
+    </div>
+
     <!-- Stack Selector -->
     <div class="stack-selector" x-show="allStacks.length > 0">
       <select x-model="selectedStackId" @change="onStackSelect()">
         <template x-for="s in allStacks" :key="s._id">
-          <option :value="s._id" x-text="s.name + (s.active ? ' (active)' : '')"></option>
+          <option :value="s._id" x-text="s.name + ' (' + s.status + ')'"></option>
         </template>
       </select>
       <button class="outline" @click="activateSelectedStack()" :aria-busy="stackActivating"
-              x-show="selectedStackId && !isSelectedStackActive()">Activate</button>
+              x-show="selectedStackId && selectedStackStatus() !== 'active'">Activate</button>
       <button class="outline secondary" @click="deleteSelectedStack()"
-              x-show="selectedStackId && !isSelectedStackActive()">Delete</button>
+              x-show="selectedStackId && selectedStackStatus() !== 'active'">Delete</button>
       <button class="outline" @click="showNewStackForm = !showNewStackForm"
               x-text="showNewStackForm ? 'Cancel' : 'New Stack'"></button>
     </div>
 
-    <!-- New Stack inline form -->
+    <!-- New Stack form with lifecycle fields -->
     <div class="new-stack-inline" x-show="showNewStackForm">
-      <input type="text" x-model="newStackName" placeholder="Stack name (e.g. Week 2)">
-      <button @click="createNewStack()" :aria-busy="newStackCreating">Create</button>
+      <div class="new-stack-fields">
+        <label>Name
+          <input type="text" x-model="newStackName" placeholder="e.g. Week 2">
+        </label>
+        <label>Starts At (optional)
+          <input type="date" x-model="newStackStartsAt">
+        </label>
+        <label>Duration (weeks, optional)
+          <input type="number" x-model.number="newStackDuration" min="1" step="1" placeholder="Indefinite">
+        </label>
+        <button @click="createNewStack()" :aria-busy="newStackCreating">Create</button>
+      </div>
     </div>
 
     <template x-if="stackGrid.length > 0">
@@ -523,11 +553,19 @@
             <template x-if="cell.day">
               <div>
                 <div class="cal-day-num" x-text="cell.day"></div>
-                <div class="cal-day-stack" x-text="cell.stackName || ''"></div>
+                <template x-for="entry in cell.stacks" :key="entry.name">
+                  <div class="cal-day-stack"
+                       :class="entry.status === 'active' ? 'cal-day-stack-active' : 'cal-day-stack-scheduled'"
+                       x-text="entry.name"></div>
+                </template>
               </div>
             </template>
           </div>
         </template>
+      </div>
+      <div style="margin-top:0.5rem; font-size:0.8rem; color:var(--pico-muted-color);">
+        <span style="color:#2e7d32;">Active</span> &nbsp;
+        <span style="color:#1565c0; font-style:italic;">Scheduled</span>
       </div>
     </div>
 
@@ -692,6 +730,8 @@ function app() {
     stackActivating: false,
     showNewStackForm: false,
     newStackName: '',
+    newStackStartsAt: '',
+    newStackDuration: null,
     newStackCreating: false,
 
     // Month calendar
@@ -1047,6 +1087,7 @@ function app() {
         this.showToast('Stack saved');
         this.stackEditing = false;
         this.loadStack();
+        this.loadAllStacks();
       } catch (e) {
         this.showToast(e.message, 'error');
       } finally {
@@ -1059,7 +1100,7 @@ function app() {
       try {
         this.allStacks = await this.api('GET', '/supplement-stack/all');
         // Select the active stack by default
-        const active = this.allStacks.find(s => s.active);
+        const active = this.allStacks.find(s => s.status === 'active');
         if (active) this.selectedStackId = active._id;
         else if (this.allStacks.length > 0) this.selectedStackId = this.allStacks[0]._id;
       } catch (e) {
@@ -1067,34 +1108,44 @@ function app() {
       }
     },
 
-    isSelectedStackActive() {
+    selectedStackStatus() {
       const s = this.allStacks.find(s => s._id === this.selectedStackId);
-      return s ? s.active : false;
+      return s ? s.status : 'inactive';
     },
 
     async onStackSelect() {
-      // Load the selected stack's full data to show in the grid
       const selected = this.allStacks.find(s => s._id === this.selectedStackId);
-      if (selected && selected.active) {
+      if (!selected) return;
+
+      if (selected.status === 'active') {
         // Already loaded as the active stack
+        this.loadStack();
         return;
       }
-      // For inactive stacks, we need to fetch full data - use the existing getStack which
-      // only returns active. For non-active, just show a message.
-      if (selected && !selected.active) {
-        this.stackData = null;
-        this.stackGrid = [];
+
+      // For non-active stacks, fetch full data via getStackById
+      this.stackLoading = true;
+      try {
+        const stack = await this.api('GET', `/supplement-stack/${selected._id}`);
+        this.stackData = stack;
+        this.stackGrid = this.buildStackGrid(stack);
+      } catch (e) {
+        if (e.message !== 'Unauthorized') {
+          this.stackData = null;
+          this.stackGrid = [];
+        }
+      } finally {
+        this.stackLoading = false;
       }
     },
 
     async activateSelectedStack() {
       const selected = this.allStacks.find(s => s._id === this.selectedStackId);
-      if (!selected || selected.active) return;
+      if (!selected || selected.status === 'active') return;
 
       this.stackActivating = true;
       try {
         // Fetch the full stack data, then PUT to activate it
-        // The PUT endpoint upserts by name and sets active
         await this.api('PUT', '/supplement-stack', { name: selected.name });
         this.showToast(`Activated "${selected.name}"`);
         await Promise.all([this.loadStack(), this.loadAllStacks()]);
@@ -1107,7 +1158,7 @@ function app() {
 
     async deleteSelectedStack() {
       const selected = this.allStacks.find(s => s._id === this.selectedStackId);
-      if (!selected || selected.active) return;
+      if (!selected || selected.status === 'active') return;
 
       if (!confirm(`Delete stack "${selected.name}"? This cannot be undone.`)) return;
 
@@ -1115,7 +1166,6 @@ function app() {
         await this.api('DELETE', `/supplement-stack/${selected._id}`);
         this.showToast(`Deleted "${selected.name}"`);
         await this.loadAllStacks();
-        // Load the active stack
         this.loadStack();
       } catch (e) {
         this.showToast(e.message, 'error');
@@ -1129,10 +1179,17 @@ function app() {
       }
       this.newStackCreating = true;
       try {
-        // PUT creates/upserts and activates
-        await this.api('PUT', '/supplement-stack', { name: this.newStackName.trim() });
-        this.showToast(`Created & activated "${this.newStackName.trim()}"`);
+        const body = { name: this.newStackName.trim() };
+        if (this.newStackStartsAt) body.startsAt = this.newStackStartsAt;
+        if (this.newStackDuration) body.durationWeeks = this.newStackDuration;
+        await this.api('PUT', '/supplement-stack', body);
+        const isFuture = this.newStackStartsAt && new Date(this.newStackStartsAt) > new Date();
+        this.showToast(isFuture
+          ? `Scheduled "${this.newStackName.trim()}"`
+          : `Created & activated "${this.newStackName.trim()}"`);
         this.newStackName = '';
+        this.newStackStartsAt = '';
+        this.newStackDuration = null;
         this.showNewStackForm = false;
         await Promise.all([this.loadStack(), this.loadAllStacks()]);
       } catch (e) {
@@ -1166,24 +1223,39 @@ function app() {
 
       // Empty leading cells
       for (let i = 0; i < startDow; i++) {
-        cells.push({ key: 'e' + i, day: 0, stackName: '', isToday: false });
+        cells.push({ key: 'e' + i, day: 0, stacks: [], isToday: false });
       }
 
-      // Find active stack and its activation date
-      const activeStack = this.allStacks.find(s => s.active);
-      const activeName = activeStack ? activeStack.name : '';
-      const activatedAt = activeStack?.activatedAt ? new Date(activeStack.activatedAt) : null;
-      // Normalize to start of activation day
-      if (activatedAt) activatedAt.setHours(0, 0, 0, 0);
+      // Build stack date ranges from allStacks (active + scheduled only)
+      const stackRanges = this.allStacks
+        .filter(s => s.status === 'active' || s.status === 'scheduled')
+        .map(s => {
+          const start = s.startsAt ? new Date(s.startsAt) : null;
+          if (start) start.setHours(0, 0, 0, 0);
+          let end = null;
+          if (s.expiresAt) {
+            end = new Date(s.expiresAt);
+            end.setHours(23, 59, 59, 999);
+          }
+          return { name: s.name, status: s.status, start, end };
+        });
 
       for (let d = 1; d <= lastDay.getDate(); d++) {
         const dateStr = `${this.calYear}-${String(this.calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const cellDate = new Date(this.calYear, this.calMonth, d);
-        const isAfterActivation = activatedAt ? cellDate >= activatedAt : true;
+
+        // Find stacks covering this date
+        const dayStacks = stackRanges.filter(sr => {
+          if (!sr.start) return false;
+          if (cellDate < sr.start) return false;
+          if (sr.end && cellDate > sr.end) return false;
+          return true;
+        }).map(sr => ({ name: sr.name, status: sr.status }));
+
         cells.push({
           key: dateStr,
           day: d,
-          stackName: isAfterActivation ? activeName : '',
+          stacks: dayStacks,
           isToday: dateStr === todayStr,
         });
       }

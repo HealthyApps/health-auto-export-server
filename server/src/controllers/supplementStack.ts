@@ -1,20 +1,48 @@
 import { Request, Response } from 'express';
 
 import { SupplementStackModel } from '../models/SupplementStack';
+import { processStackTransitions, withExpiresAt } from '../stackLifecycle';
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
 
 export const getAllStacks = async (req: Request, res: Response) => {
   try {
+    await processStackTransitions();
+
     const stacks = await SupplementStackModel.find({})
-      .select('name active activatedAt createdAt updatedAt')
-      .sort({ active: -1, name: 1 })
+      .select('name status startsAt durationWeeks createdAt updatedAt')
+      .sort({ status: 1, name: 1 })
       .lean();
 
-    res.status(200).json(stacks);
+    res.status(200).json(stacks.map(withExpiresAt));
   } catch (error) {
     console.error('Error fetching all stacks:', error);
     res.status(500).json({ error: 'Error fetching supplement stacks' });
+  }
+};
+
+export const getStackById = async (req: Request, res: Response) => {
+  try {
+    await processStackTransitions();
+
+    const stack = await SupplementStackModel.findById(req.params.id)
+      .populate('monday.morning.supplement_id monday.noon.supplement_id monday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('tuesday.morning.supplement_id tuesday.noon.supplement_id tuesday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('wednesday.morning.supplement_id wednesday.noon.supplement_id wednesday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('thursday.morning.supplement_id thursday.noon.supplement_id thursday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('friday.morning.supplement_id friday.noon.supplement_id friday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('saturday.morning.supplement_id saturday.noon.supplement_id saturday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('sunday.morning.supplement_id sunday.noon.supplement_id sunday.night.supplement_id', 'name default_dose dose_unit category')
+      .lean();
+
+    if (!stack) {
+      return res.status(404).json({ error: 'Stack not found' });
+    }
+
+    res.status(200).json(withExpiresAt(stack));
+  } catch (error) {
+    console.error('Error fetching stack by ID:', error);
+    res.status(500).json({ error: 'Error fetching supplement stack' });
   }
 };
 
@@ -24,7 +52,7 @@ export const deleteStack = async (req: Request, res: Response) => {
     if (!stack) {
       return res.status(404).json({ error: 'Stack not found' });
     }
-    if (stack.active) {
+    if (stack.status === 'active') {
       return res.status(400).json({ error: 'Cannot delete the active stack' });
     }
     await SupplementStackModel.findByIdAndDelete(req.params.id);
@@ -37,7 +65,9 @@ export const deleteStack = async (req: Request, res: Response) => {
 
 export const getStack = async (req: Request, res: Response) => {
   try {
-    const stack = await SupplementStackModel.findOne({ active: true })
+    await processStackTransitions();
+
+    const stack = await SupplementStackModel.findOne({ status: 'active' })
       .populate('monday.morning.supplement_id monday.noon.supplement_id monday.night.supplement_id', 'name default_dose dose_unit category')
       .populate('tuesday.morning.supplement_id tuesday.noon.supplement_id tuesday.night.supplement_id', 'name default_dose dose_unit category')
       .populate('wednesday.morning.supplement_id wednesday.noon.supplement_id wednesday.night.supplement_id', 'name default_dose dose_unit category')
@@ -51,7 +81,7 @@ export const getStack = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'No active stack found' });
     }
 
-    res.status(200).json(stack);
+    res.status(200).json(withExpiresAt(stack));
   } catch (error) {
     console.error('Error fetching stack:', error);
     res.status(500).json({ error: 'Error fetching supplement stack' });
@@ -60,6 +90,8 @@ export const getStack = async (req: Request, res: Response) => {
 
 export const getToday = async (req: Request, res: Response) => {
   try {
+    await processStackTransitions();
+
     const tz = (req.query.tz as string) || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     let now: Date;
@@ -72,14 +104,14 @@ export const getToday = async (req: Request, res: Response) => {
       dayName = DAYS[now.getDay()];
     }
 
-    const stack = await SupplementStackModel.findOne({ active: true }).lean();
+    const stack = await SupplementStackModel.findOne({ status: 'active' }).lean();
     if (!stack) {
       return res.status(404).json({ error: 'No active stack found' });
     }
 
     const todaySlots = (stack as any)[dayName];
     if (!todaySlots) {
-      return res.status(200).json({ day: dayName, morning: [], noon: [], night: [] });
+      return res.status(200).json({ day: dayName, morning: [], noon: [], night: [], ...withExpiresAt(stack) });
     }
 
     // Populate supplement names
@@ -102,11 +134,14 @@ export const getToday = async (req: Request, res: Response) => {
         supplement: supplementMap.get(e.supplement_id.toString()) || null,
       }));
 
+    const enriched = withExpiresAt(stack);
+
     res.status(200).json({
       day: dayName,
       morning: enrich(todaySlots.morning),
       noon: enrich(todaySlots.noon),
       night: enrich(todaySlots.night),
+      expiresAt: enriched.expiresAt,
     });
   } catch (error) {
     console.error('Error fetching today stack:', error);
@@ -116,21 +151,43 @@ export const getToday = async (req: Request, res: Response) => {
 
 export const updateStack = async (req: Request, res: Response) => {
   try {
-    const { name, monday, tuesday, wednesday, thursday, friday, saturday, sunday } = req.body;
+    const {
+      name, startsAt, durationWeeks,
+      monday, tuesday, wednesday, thursday, friday, saturday, sunday,
+    } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'name is required' });
     }
 
-    // Deactivate any existing active stacks
-    await SupplementStackModel.updateMany({ active: true }, { active: false, activatedAt: null });
+    const now = new Date();
+    let parsedStartsAt: Date | null = null;
+    let status: 'active' | 'scheduled' = 'active';
+
+    if (startsAt) {
+      parsedStartsAt = new Date(startsAt);
+      if (isNaN(parsedStartsAt.getTime())) {
+        return res.status(400).json({ error: 'Invalid startsAt date' });
+      }
+      // Future startsAt → scheduled; past/present → active
+      status = parsedStartsAt > now ? 'scheduled' : 'active';
+    } else {
+      parsedStartsAt = now;
+      status = 'active';
+    }
+
+    // If activating immediately, deactivate any existing active stacks
+    if (status === 'active') {
+      await SupplementStackModel.updateMany({ status: 'active' }, { status: 'inactive' });
+    }
 
     const stack = await SupplementStackModel.findOneAndUpdate(
       { name },
       {
         name,
-        active: true,
-        activatedAt: new Date(),
+        status,
+        startsAt: parsedStartsAt,
+        durationWeeks: durationWeeks != null ? durationWeeks : null,
         monday: monday || { morning: [], noon: [], night: [] },
         tuesday: tuesday || { morning: [], noon: [], night: [] },
         wednesday: wednesday || { morning: [], noon: [], night: [] },
@@ -142,7 +199,7 @@ export const updateStack = async (req: Request, res: Response) => {
       { upsert: true, new: true, runValidators: true },
     );
 
-    res.status(200).json(stack);
+    res.status(200).json(withExpiresAt(stack.toObject()));
   } catch (error) {
     if (error instanceof Error && error.name === 'ValidationError') {
       return res.status(400).json({ error: error.message });

@@ -1,5 +1,7 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
+export type StackStatus = 'active' | 'scheduled' | 'expired' | 'inactive';
+
 export interface IStackEntry {
   supplement_id: Types.ObjectId;
   dose_quantity: number;
@@ -13,8 +15,9 @@ export interface IDaySlots {
 
 export interface ISupplementStack extends Document {
   name: string;
-  active: boolean;
-  activatedAt: Date | null;
+  status: StackStatus;
+  startsAt: Date | null;
+  durationWeeks: number | null;
   monday: IDaySlots;
   tuesday: IDaySlots;
   wednesday: IDaySlots;
@@ -48,8 +51,14 @@ const emptyDay = { morning: [], noon: [], night: [] };
 const SupplementStackSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
-    active: { type: Boolean, required: true, default: true },
-    activatedAt: { type: Date, default: null },
+    status: {
+      type: String,
+      enum: ['active', 'scheduled', 'expired', 'inactive'],
+      required: true,
+      default: 'active',
+    },
+    startsAt: { type: Date, default: null },
+    durationWeeks: { type: Number, default: null, min: 1 },
     monday: { type: DaySlotsSchema, default: () => ({ ...emptyDay }) },
     tuesday: { type: DaySlotsSchema, default: () => ({ ...emptyDay }) },
     wednesday: { type: DaySlotsSchema, default: () => ({ ...emptyDay }) },
@@ -63,6 +72,6 @@ const SupplementStackSchema = new Schema(
   },
 );
 
-SupplementStackSchema.index({ active: 1 });
+SupplementStackSchema.index({ status: 1 });
 
 export const SupplementStackModel = mongoose.model<ISupplementStack>('SupplementStack', SupplementStackSchema, 'supplement_stacks');

@@ -12,11 +12,21 @@ import supplementInventoryRouter from './routes/supplementInventory';
 import workoutLogRouter from './routes/workoutLog';
 import workoutsRouter from './routes/workouts';
 import { requireReadAuth, requireWriteAuth } from './middleware/auth';
+import { migrateStackStatuses, processStackTransitions } from './stackLifecycle';
 
 const app = express();
 const port = 3001;
 
-mongodb.connect();
+mongodb.connect().then(async () => {
+  await migrateStackStatuses();
+
+  // Process stack transitions every 60 seconds
+  setInterval(() => {
+    processStackTransitions().catch((err) =>
+      console.error('[stack-lifecycle] Transition error:', err),
+    );
+  }, 60_000);
+});
 
 const corsOptions = {
   origin: '*',

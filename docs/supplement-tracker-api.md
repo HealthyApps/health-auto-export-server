@@ -55,7 +55,11 @@ curl -X POST http://hae-server/api/supplement-logs \
   -d '{"supplement_id": "...", "dose_quantity": 1, "slot": "morning"}'
 ```
 
-## Create Supplement
+## Manage Supplements
+
+Supplements are the base definitions (name, dose, unit, category). Manage them via the UI under **Inventory → Manage Supplements ▸** or via the API.
+
+### Create Supplement
 
 ```bash
 curl -X POST http://hae-server/api/supplements \
@@ -71,6 +75,25 @@ curl -X POST http://hae-server/api/supplements \
 
 **dose_unit** (enum): `mg`, `mcg`, `g`, `iu`, `capsule`, `tablet`, `ml`, `drop`, `scoop`
 **category** (enum): `vitamin`, `mineral`, `amino_acid`, `herb`, `probiotic`, `omega`, `other`
+
+### Update Supplement
+
+Change name, default_dose, dose_unit, or category. Propagates everywhere that supplement is referenced.
+
+```bash
+curl -X PUT http://hae-server/api/supplements/<id> \
+  -H "Content-Type: application/json" \
+  -H "api-key: sk-..." \
+  -d '{"default_dose": 500, "dose_unit": "mg"}'
+```
+
+### Deactivate Supplement
+
+Soft-deletes — hides from active lists but preserves historical logs.
+
+```bash
+curl -X DELETE http://hae-server/api/supplements/<id> -H "api-key: sk-..."
+```
 
 ## Add Inventory
 

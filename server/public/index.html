@@ -264,13 +264,19 @@
 
               <!-- Edit row -->
               <template x-if="editingInvId === inv._id">
-                <td x-text="inv.supplement_id?.name || '—'"></td>
+                <td>
+                  <select x-model="editInvForm.supplement_id" style="margin:0;padding:0.2rem;font-size:0.85rem;">
+                    <template x-for="s in supplements" :key="s._id">
+                      <option :value="s._id" x-text="s.name"></option>
+                    </template>
+                  </select>
+                </td>
               </template>
               <template x-if="editingInvId === inv._id">
                 <td><input type="text" x-model="editInvForm.brand" placeholder="Brand" style="width:100px;margin:0;padding:0.2rem;font-size:0.85rem;"></td>
               </template>
               <template x-if="editingInvId === inv._id">
-                <td x-text="inv.supplement_id?.default_dose ? (inv.supplement_id.default_dose + ' ' + (inv.supplement_id.dose_unit || '')) : '—'"></td>
+                <td x-text="editInvSuppDose()"></td>
               </template>
               <template x-if="editingInvId === inv._id">
                 <td><input type="number" x-model.number="editInvForm.pills_remaining" min="0" step="1" style="width:70px;margin:0;padding:0.2rem;font-size:0.85rem;"></td>
@@ -567,7 +573,7 @@ function app() {
 
     // Inventory inline editing
     editingInvId: null,
-    editInvForm: { brand: '', pills_remaining: 0, quantity_purchased: 0, unit_cost: 0, purchase_date: '', expiration_date: '' },
+    editInvForm: { supplement_id: '', brand: '', pills_remaining: 0, quantity_purchased: 0, unit_cost: 0, purchase_date: '', expiration_date: '' },
     editInvSaving: false,
 
     // Stack view
@@ -715,7 +721,9 @@ function app() {
     // --- Inventory inline editing ---
     startEditInv(inv) {
       this.editingInvId = inv._id;
+      if (!this.supplements.length) this.loadSupplements();
       this.editInvForm = {
+        supplement_id: inv.supplement_id?._id || inv.supplement_id,
         brand: inv.brand || '',
         pills_remaining: inv.pills_remaining,
         quantity_purchased: inv.quantity_purchased,
@@ -723,6 +731,11 @@ function app() {
         purchase_date: inv.purchase_date ? new Date(inv.purchase_date).toISOString().split('T')[0] : '',
         expiration_date: inv.expiration_date ? new Date(inv.expiration_date).toISOString().split('T')[0] : '',
       };
+    },
+
+    editInvSuppDose() {
+      const s = this.supplements.find(s => s._id === this.editInvForm.supplement_id);
+      return s ? (s.default_dose + ' ' + s.dose_unit) : '—';
     },
 
     cancelEditInv() {
@@ -733,6 +746,7 @@ function app() {
       this.editInvSaving = true;
       try {
         const body = {
+          supplement_id: this.editInvForm.supplement_id,
           brand: this.editInvForm.brand.trim() || null,
           pills_remaining: this.editInvForm.pills_remaining,
           quantity_purchased: this.editInvForm.quantity_purchased,

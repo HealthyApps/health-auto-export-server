@@ -115,6 +115,11 @@
     .new-stack-inline { display: flex; gap: 0.5rem; align-items: end; margin-bottom: 1rem; }
     .new-stack-inline input { margin: 0; font-size: 0.85rem; padding: 0.3rem; flex: 1; }
     .new-stack-inline button { margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; white-space: nowrap; }
+
+    /* Out-of-stock warnings */
+    .oos-badge { font-size: 0.7rem; font-weight: 600; color: #c62828; margin-left: 0.3rem; }
+    .stack-item-oos { opacity: 0.6; }
+    .stack-item-oos .oos-badge { opacity: 1; }
   </style>
 </head>
 <body>
@@ -141,10 +146,10 @@
   <!-- Tabs -->
   <nav>
     <ul>
-      <li><a class="tab-btn" :aria-current="tab === 'today'" @click="tab = 'today'; loadToday()">Today</a></li>
+      <li><a class="tab-btn" :aria-current="tab === 'today'" @click="tab = 'today'; loadToday(); loadInventory()">Today</a></li>
       <li><a class="tab-btn" :aria-current="tab === 'log'" @click="tab = 'log'; loadSupplements()">Log Dose</a></li>
       <li><a class="tab-btn" :aria-current="tab === 'inventory'" @click="tab = 'inventory'; loadInventory(); loadSupplements()">Inventory</a></li>
-      <li><a class="tab-btn" :aria-current="tab === 'stack'" @click="tab = 'stack'; loadStack(); loadAllStacks(); loadSupplements()">Stack</a></li>
+      <li><a class="tab-btn" :aria-current="tab === 'stack'" @click="tab = 'stack'; loadStack(); loadAllStacks(); loadSupplements(); loadInventory()">Stack</a></li>
       <li><a class="tab-btn" :aria-current="tab === 'history'" @click="tab = 'history'; loadHistoryRange()">History</a></li>
     </ul>
   </nav>
@@ -156,13 +161,15 @@
       <div class="slot-group" x-show="todayData[slot] && todayData[slot].length > 0">
         <h4 x-text="slot"></h4>
         <template x-for="item in (todayData[slot] || [])" :key="item.supplement_id">
-          <div class="stack-item">
+          <div class="stack-item" :class="{ 'stack-item-oos': !hasStock(item.supplement_id?._id || item.supplement_id) }">
             <span>
               <strong x-text="item.supplement?.name || 'Unknown'"></strong>
               <small x-text="item.supplement?.default_dose ? (item.supplement.default_dose + ' ' + (item.supplement.dose_unit || '')) + ' \u00d7 ' + item.dose_quantity : '(\u00d7' + item.dose_quantity + ')'"></small>
+              <span class="oos-badge" x-show="!hasStock(item.supplement_id?._id || item.supplement_id)">out of stock</span>
             </span>
             <button class="outline" @click="quickLogFromStack(item, slot)"
-                    :aria-busy="item._logging">Log</button>
+                    :aria-busy="item._logging"
+                    :disabled="!hasStock(item.supplement_id?._id || item.supplement_id)">Log</button>
           </div>
         </template>
       </div>
@@ -375,8 +382,11 @@
           </thead>
           <tbody>
             <template x-for="row in stackGrid" :key="row.name">
-              <tr>
-                <td x-text="row.name"></td>
+              <tr :style="!hasStock(row.suppId) ? 'opacity:0.6' : ''">
+                <td>
+                  <span x-text="row.name"></span>
+                  <span class="oos-badge" x-show="!hasStock(row.suppId)">no stock</span>
+                </td>
                 <template x-for="day in ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']" :key="day">
                   <td>
                     <span x-show="row.days[day].morning" class="slot-indicator slot-m">M</span>
@@ -466,7 +476,7 @@
             <select x-model="addEntryForm[slot].supplement_id">
               <option value="">Add supplement...</option>
               <template x-for="s in supplements" :key="s._id">
-                <option :value="s._id" x-text="s.name"></option>
+                <option :value="s._id" x-text="s.name + (hasStock(s._id) ? '' : ' ⚠ no stock')"></option>
               </template>
             </select>
             <input type="number" x-model.number="addEntryForm[slot].dose_quantity" min="0" step="any" placeholder="Dose">
@@ -601,7 +611,7 @@ function app() {
       } catch {
         this.apiKey = '';
       }
-      if (this.apiKey) this.loadToday();
+      if (this.apiKey) { this.loadToday(); this.loadInventory(); }
     },
 
     headers() {
@@ -638,6 +648,15 @@ function app() {
     fmtTime(d) {
       if (!d) return '';
       return new Date(d).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    },
+
+    // --- Stock check ---
+    hasStock(suppId) {
+      if (!suppId || this.inventory.length === 0) return true; // assume stocked if no data loaded yet
+      return this.inventory.some(inv => {
+        const invSuppId = (typeof inv.supplement_id === 'object' && inv.supplement_id?._id) ? inv.supplement_id._id : inv.supplement_id;
+        return String(invSuppId) === String(suppId) && inv.pills_remaining > 0;
+      });
     },
 
     // --- Today ---
@@ -753,7 +772,7 @@ function app() {
 
     buildStackGrid(stack) {
       if (!stack) return [];
-      const suppMap = {}; // name -> { name, id, days: { monday: {morning,noon,night}, ... } }
+      const suppMap = {}; // name -> { name, suppId, days: { monday: {morning,noon,night}, ... } }
 
       for (const day of DAYS_ORDER) {
         const dayData = stack[day];
@@ -763,8 +782,9 @@ function app() {
           for (const entry of entries) {
             const supp = entry.supplement_id;
             const name = (typeof supp === 'object' && supp?.name) ? supp.name : String(supp);
+            const suppId = (typeof supp === 'object' && supp?._id) ? supp._id : String(supp);
             if (!suppMap[name]) {
-              suppMap[name] = { name, days: {} };
+              suppMap[name] = { name, suppId, days: {} };
               for (const d of DAYS_ORDER) {
                 suppMap[name].days[d] = { morning: false, noon: false, night: false };
               }

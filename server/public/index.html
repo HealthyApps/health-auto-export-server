@@ -142,6 +142,9 @@
     .oos-badge { font-size: 0.7rem; font-weight: 600; color: #c62828; margin-left: 0.3rem; }
     .stack-item-oos { opacity: 0.6; }
     .stack-item-oos .oos-badge { opacity: 1; }
+    .stack-item-logged { opacity: 0.5; }
+    .stack-item-logged strong { text-decoration: line-through; }
+    .logged-check { color: #2e7d32; font-weight: 700; margin-right: 0.3rem; }
 
     /* Stack meta info */
     .stack-meta { font-size: 0.85rem; color: var(--pico-muted-color); margin-bottom: 1rem; }
@@ -187,15 +190,21 @@
       <div class="slot-group" x-show="todayData[slot] && todayData[slot].length > 0">
         <h4 x-text="slot"></h4>
         <template x-for="item in (todayData[slot] || [])" :key="item.supplement_id">
-          <div class="stack-item" :class="{ 'stack-item-oos': !hasStock(item.supplement_id?._id || item.supplement_id) }">
+          <div class="stack-item"
+               :class="{
+                 'stack-item-oos': !hasStock(item.supplement_id?._id || item.supplement_id),
+                 'stack-item-logged': isTodayLogged(item.supplement_id?._id || item.supplement_id, slot)
+               }">
             <span>
+              <span class="logged-check" x-show="isTodayLogged(item.supplement_id?._id || item.supplement_id, slot)">&#10003;</span>
               <strong x-text="item.supplement?.name || 'Unknown'"></strong>
               <small x-text="item.supplement?.default_dose ? (item.supplement.default_dose + ' ' + (item.supplement.dose_unit || '')) + ' \u00d7 ' + item.dose_quantity : '(\u00d7' + item.dose_quantity + ')'"></small>
               <span class="oos-badge" x-show="!hasStock(item.supplement_id?._id || item.supplement_id)">out of stock</span>
             </span>
             <button class="outline" @click="quickLogFromStack(item, slot)"
                     :aria-busy="item._logging"
-                    :disabled="!hasStock(item.supplement_id?._id || item.supplement_id)">Log</button>
+                    :disabled="!hasStock(item.supplement_id?._id || item.supplement_id) || isTodayLogged(item.supplement_id?._id || item.supplement_id, slot)"
+                    x-text="isTodayLogged(item.supplement_id?._id || item.supplement_id, slot) ? 'Logged' : 'Log'"></button>
           </div>
         </template>
       </div>
@@ -720,6 +729,7 @@ function app() {
     apiKey: '',
     toast: { show: false, msg: '', type: 'success' },
     todayData: { day: '', morning: [], noon: [], night: [] },
+    todayLoggedKeys: new Set(),
     supplements: [],
     inventory: [],
     history: [],
@@ -837,11 +847,27 @@ function app() {
       });
     },
 
+    isTodayLogged(suppId, slot) {
+      return this.todayLoggedKeys.has(String(suppId) + ':' + slot);
+    },
+
     // --- Today ---
     async loadToday() {
       try {
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        this.todayData = await this.api('GET', `/supplement-stack/today?tz=${encodeURIComponent(tz)}`);
+        const todayStr = new Date().toISOString().split('T')[0];
+        const [todayStack, todayLogs] = await Promise.all([
+          this.api('GET', `/supplement-stack/today?tz=${encodeURIComponent(tz)}`),
+          this.api('GET', `/supplement-logs?start_date=${todayStr}&end_date=${todayStr}&limit=500`),
+        ]);
+        this.todayData = todayStack;
+
+        // Build set of already-logged supplement:slot keys
+        this.todayLoggedKeys = new Set();
+        for (const log of todayLogs) {
+          const suppId = (typeof log.supplement_id === 'object' && log.supplement_id?._id) ? log.supplement_id._id : log.supplement_id;
+          this.todayLoggedKeys.add(String(suppId) + ':' + log.slot);
+        }
       } catch (e) {
         if (e.message !== 'Unauthorized') {
           this.todayData = { day: new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase(), morning: [], noon: [], night: [] };
@@ -1444,11 +1470,13 @@ function app() {
     async quickLogFromStack(item, slot) {
       item._logging = true;
       try {
+        const suppId = item.supplement_id?._id || item.supplement_id;
         const result = await this.api('POST', '/supplement-logs', {
-          supplement_id: item.supplement_id?._id || item.supplement_id,
+          supplement_id: suppId,
           dose_quantity: item.dose_quantity,
           slot,
         });
+        this.todayLoggedKeys.add(String(suppId) + ':' + slot);
         const pillsMsg = result.inventory_decremented ? ` (${result.pills_remaining} left)` : '';
         this.showToast(`Logged ${item.supplement?.name || 'dose'}${pillsMsg}`);
       } catch (e) {

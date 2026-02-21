@@ -66,6 +66,23 @@
 
     /* Inventory form */
     .inv-form-section { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--pico-muted-border-color); }
+
+    /* Stack editor */
+    .stack-editor { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--pico-muted-border-color); }
+    .day-tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .day-tabs button { margin: 0; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+    .slot-editor { margin-bottom: 1.5rem; }
+    .slot-editor h5 { margin-bottom: 0.3rem; text-transform: capitalize; }
+    .slot-entry { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; }
+    .slot-entry span { flex: 1; }
+    .slot-entry button { margin: 0; padding: 0.2rem 0.5rem; font-size: 0.8rem; }
+    .add-entry { display: flex; gap: 0.5rem; align-items: end; margin-top: 0.3rem; }
+    .add-entry select, .add-entry input { margin: 0; font-size: 0.85rem; padding: 0.3rem; }
+    .add-entry select { flex: 2; }
+    .add-entry input { flex: 1; max-width: 80px; }
+    .add-entry button { margin: 0; padding: 0.3rem 0.6rem; font-size: 0.8rem; white-space: nowrap; }
+    .copy-actions { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .copy-actions button { margin: 0; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
   </style>
 </head>
 <body>
@@ -95,7 +112,7 @@
       <li><a class="tab-btn" :aria-current="tab === 'today'" @click="tab = 'today'; loadToday()">Today</a></li>
       <li><a class="tab-btn" :aria-current="tab === 'log'" @click="tab = 'log'; loadSupplements()">Log Dose</a></li>
       <li><a class="tab-btn" :aria-current="tab === 'inventory'" @click="tab = 'inventory'; loadInventory(); loadSupplements()">Inventory</a></li>
-      <li><a class="tab-btn" :aria-current="tab === 'stack'" @click="tab = 'stack'; loadStack()">Stack</a></li>
+      <li><a class="tab-btn" :aria-current="tab === 'stack'" @click="tab = 'stack'; loadStack(); loadSupplements()">Stack</a></li>
       <li><a class="tab-btn" :aria-current="tab === 'history'" @click="tab = 'history'; loadHistoryRange()">History</a></li>
     </ul>
   </nav>
@@ -256,12 +273,68 @@
         </table>
       </figure>
     </template>
-    <p x-show="stackGrid.length === 0 && !stackLoading">No active stack defined.</p>
+    <p x-show="stackGrid.length === 0 && !stackLoading && !stackEditing">No active stack defined.</p>
     <p x-show="stackLoading" aria-busy="true">Loading stack...</p>
-    <div style="margin-top:1rem; font-size:0.85rem; color:var(--pico-muted-color);">
+    <div x-show="stackGrid.length > 0" style="margin-top:1rem; font-size:0.85rem; color:var(--pico-muted-color);">
       <span class="slot-indicator slot-m">M</span> Morning &nbsp;
       <span class="slot-indicator slot-n">N</span> Noon &nbsp;
       <span class="slot-indicator slot-ni">Ni</span> Night
+    </div>
+
+    <!-- Edit toggle -->
+    <button class="outline" style="margin-top:1rem;"
+            @click="stackEditing ? stackEditing = false : startEditStack()"
+            x-text="stackEditing ? 'Cancel Editing' : 'Edit Stack'"></button>
+
+    <!-- Stack Editor -->
+    <div class="stack-editor" x-show="stackEditing">
+      <label>Stack Name
+        <input type="text" x-model="stackEdit.name" placeholder="e.g. Daily Stack v2">
+      </label>
+
+      <!-- Day selector tabs -->
+      <div class="day-tabs">
+        <template x-for="d in ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']" :key="d">
+          <button :class="editDay === d ? '' : 'outline'" @click="editDay = d"
+                  x-text="d.slice(0,3).replace(/^./, c => c.toUpperCase())"></button>
+        </template>
+      </div>
+
+      <!-- Copy actions -->
+      <div class="copy-actions">
+        <button class="outline" @click="copyDayToAll()">Copy this day to all days</button>
+        <button class="outline" @click="copyDayToWeekdays()">Copy to weekdays (Mon-Fri)</button>
+      </div>
+
+      <!-- Slot editors for selected day -->
+      <template x-for="slot in ['morning', 'noon', 'night']" :key="slot">
+        <div class="slot-editor">
+          <h5 x-text="slot"></h5>
+
+          <!-- Current entries -->
+          <template x-for="(entry, idx) in stackEdit[editDay][slot]" :key="idx">
+            <div class="slot-entry">
+              <span x-text="suppName(entry.supplement_id) + ' — ' + entry.dose_quantity"></span>
+              <button class="outline secondary" @click="removeStackEntry(editDay, slot, idx)">Remove</button>
+            </div>
+          </template>
+
+          <!-- Add entry row -->
+          <div class="add-entry">
+            <select x-model="addEntryForm[slot].supplement_id">
+              <option value="">Add supplement...</option>
+              <template x-for="s in supplements" :key="s._id">
+                <option :value="s._id" x-text="s.name"></option>
+              </template>
+            </select>
+            <input type="number" x-model.number="addEntryForm[slot].dose_quantity" min="0" step="any" placeholder="Dose">
+            <button class="outline" @click="addStackEntry(editDay, slot)">Add</button>
+          </div>
+        </div>
+      </template>
+
+      <!-- Save -->
+      <button @click="saveStack()" :aria-busy="stackSaving" style="margin-top:1rem;">Save Stack</button>
     </div>
   </section>
 
@@ -344,6 +417,15 @@ function app() {
     stackData: null,
     stackGrid: [],
     stackLoading: false,
+    stackEditing: false,
+    stackSaving: false,
+    editDay: 'monday',
+    stackEdit: null,
+    addEntryForm: {
+      morning: { supplement_id: '', dose_quantity: 1 },
+      noon: { supplement_id: '', dose_quantity: 1 },
+      night: { supplement_id: '', dose_quantity: 1 },
+    },
 
     // History view
     historyRange: 'week',
@@ -489,6 +571,102 @@ function app() {
         }
       }
       return Object.values(suppMap).sort((a, b) => a.name.localeCompare(b.name));
+    },
+
+    // --- Stack editor ---
+    suppName(id) {
+      const s = this.supplements.find(s => s._id === id);
+      return s ? s.name : String(id);
+    },
+
+    emptyWeek() {
+      const week = {};
+      for (const d of DAYS_ORDER) {
+        week[d] = { morning: [], noon: [], night: [] };
+      }
+      return week;
+    },
+
+    startEditStack() {
+      if (this.stackData) {
+        // Deep clone current stack into editable form (extract raw IDs)
+        const edit = { name: this.stackData.name || '' };
+        for (const day of DAYS_ORDER) {
+          edit[day] = { morning: [], noon: [], night: [] };
+          const src = this.stackData[day];
+          if (!src) continue;
+          for (const slot of ['morning', 'noon', 'night']) {
+            edit[day][slot] = (src[slot] || []).map(e => ({
+              supplement_id: (typeof e.supplement_id === 'object' && e.supplement_id?._id) ? e.supplement_id._id : e.supplement_id,
+              dose_quantity: e.dose_quantity,
+            }));
+          }
+        }
+        this.stackEdit = edit;
+      } else {
+        this.stackEdit = { name: '', ...this.emptyWeek() };
+      }
+      this.editDay = 'monday';
+      this.stackEditing = true;
+    },
+
+    addStackEntry(day, slot) {
+      const form = this.addEntryForm[slot];
+      if (!form.supplement_id || !form.dose_quantity) return;
+      this.stackEdit[day][slot].push({
+        supplement_id: form.supplement_id,
+        dose_quantity: form.dose_quantity,
+      });
+      form.supplement_id = '';
+      form.dose_quantity = 1;
+    },
+
+    removeStackEntry(day, slot, idx) {
+      this.stackEdit[day][slot].splice(idx, 1);
+    },
+
+    copyDayToAll() {
+      const src = this.stackEdit[this.editDay];
+      for (const day of DAYS_ORDER) {
+        if (day === this.editDay) continue;
+        this.stackEdit[day] = {
+          morning: src.morning.map(e => ({ ...e })),
+          noon: src.noon.map(e => ({ ...e })),
+          night: src.night.map(e => ({ ...e })),
+        };
+      }
+      this.showToast(`Copied ${this.editDay} to all days`);
+    },
+
+    copyDayToWeekdays() {
+      const src = this.stackEdit[this.editDay];
+      for (const day of ['monday','tuesday','wednesday','thursday','friday']) {
+        if (day === this.editDay) continue;
+        this.stackEdit[day] = {
+          morning: src.morning.map(e => ({ ...e })),
+          noon: src.noon.map(e => ({ ...e })),
+          night: src.night.map(e => ({ ...e })),
+        };
+      }
+      this.showToast(`Copied ${this.editDay} to weekdays`);
+    },
+
+    async saveStack() {
+      if (!this.stackEdit.name) {
+        this.showToast('Stack name is required', 'error');
+        return;
+      }
+      this.stackSaving = true;
+      try {
+        await this.api('PUT', '/supplement-stack', this.stackEdit);
+        this.showToast('Stack saved');
+        this.stackEditing = false;
+        this.loadStack();
+      } catch (e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        this.stackSaving = false;
+      }
     },
 
     // --- History with compliance ---

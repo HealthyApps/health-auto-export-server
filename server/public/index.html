@@ -71,14 +71,12 @@
 <body>
 <main class="container" x-data="app()" x-init="init()">
 
-  <!-- Auth overlay -->
+  <!-- Loading overlay (while fetching API key) -->
   <template x-if="!apiKey">
     <div class="auth-overlay">
       <div class="auth-box">
         <h3>Supplement Tracker</h3>
-        <p>Enter your API key to continue.</p>
-        <input type="password" x-model="apiKeyInput" placeholder="sk-..." @keyup.enter="saveApiKey()">
-        <button @click="saveApiKey()">Save</button>
+        <p aria-busy="true">Loading...</p>
       </div>
     </div>
   </template>
@@ -327,8 +325,7 @@ function app() {
 
   return {
     tab: 'today',
-    apiKey: localStorage.getItem('supp_api_key') || '',
-    apiKeyInput: '',
+    apiKey: '',
     toast: { show: false, msg: '', type: 'success' },
     todayData: { day: '', morning: [], noon: [], night: [] },
     supplements: [],
@@ -354,16 +351,15 @@ function app() {
     historyDays: [],
     historyLoading: false,
 
-    init() {
+    async init() {
+      try {
+        const res = await fetch('/supplements/config.json');
+        const cfg = await res.json();
+        this.apiKey = cfg.apiKey || '';
+      } catch {
+        this.apiKey = '';
+      }
       if (this.apiKey) this.loadToday();
-    },
-
-    saveApiKey() {
-      if (!this.apiKeyInput) return;
-      this.apiKey = this.apiKeyInput;
-      localStorage.setItem('supp_api_key', this.apiKey);
-      this.apiKeyInput = '';
-      this.loadToday();
     },
 
     headers() {
@@ -375,8 +371,6 @@ function app() {
       if (body) opts.body = JSON.stringify(body);
       const res = await fetch('/api' + path, opts);
       if (res.status === 401) {
-        localStorage.removeItem('supp_api_key');
-        this.apiKey = '';
         throw new Error('Unauthorized');
       }
       const data = await res.json();

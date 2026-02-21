@@ -43,7 +43,10 @@ app.use('/api/supplement-logs', supplementLogsRouter);
 app.use('/api/supplement-stack', supplementStackRouter);
 app.use('/api/supplement-inventory', supplementInventoryRouter);
 
-// Supplement tracker web UI
+// Supplement tracker web UI — config endpoint injects API key so users don't have to enter it
+app.get('/supplements/config.json', (req: express.Request, res: express.Response) => {
+  res.json({ apiKey: process.env.WRITE_TOKEN || '' });
+});
 app.use('/supplements', express.static(path.resolve(__dirname, '../public')));
 
 app.get('/', (req: express.Request, res: express.Response) => {

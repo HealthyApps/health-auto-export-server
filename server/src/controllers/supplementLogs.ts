@@ -126,7 +126,7 @@ export const getLogs = async (req: Request, res: Response) => {
     const maxResults = limit ? parseInt(limit as string, 10) : 200;
 
     const logs = await SupplementLogModel.find(query)
-      .populate('supplement_id', 'name dose_unit category')
+      .populate('supplement_id', 'name default_dose dose_unit category')
       .sort({ timestamp: -1 })
       .limit(maxResults)
       .lean();

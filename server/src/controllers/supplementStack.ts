@@ -38,13 +38,13 @@ export const deleteStack = async (req: Request, res: Response) => {
 export const getStack = async (req: Request, res: Response) => {
   try {
     const stack = await SupplementStackModel.findOne({ active: true })
-      .populate('monday.morning.supplement_id monday.noon.supplement_id monday.night.supplement_id', 'name dose_unit category')
-      .populate('tuesday.morning.supplement_id tuesday.noon.supplement_id tuesday.night.supplement_id', 'name dose_unit category')
-      .populate('wednesday.morning.supplement_id wednesday.noon.supplement_id wednesday.night.supplement_id', 'name dose_unit category')
-      .populate('thursday.morning.supplement_id thursday.noon.supplement_id thursday.night.supplement_id', 'name dose_unit category')
-      .populate('friday.morning.supplement_id friday.noon.supplement_id friday.night.supplement_id', 'name dose_unit category')
-      .populate('saturday.morning.supplement_id saturday.noon.supplement_id saturday.night.supplement_id', 'name dose_unit category')
-      .populate('sunday.morning.supplement_id sunday.noon.supplement_id sunday.night.supplement_id', 'name dose_unit category')
+      .populate('monday.morning.supplement_id monday.noon.supplement_id monday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('tuesday.morning.supplement_id tuesday.noon.supplement_id tuesday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('wednesday.morning.supplement_id wednesday.noon.supplement_id wednesday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('thursday.morning.supplement_id thursday.noon.supplement_id thursday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('friday.morning.supplement_id friday.noon.supplement_id friday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('saturday.morning.supplement_id saturday.noon.supplement_id saturday.night.supplement_id', 'name default_dose dose_unit category')
+      .populate('sunday.morning.supplement_id sunday.noon.supplement_id sunday.night.supplement_id', 'name default_dose dose_unit category')
       .lean();
 
     if (!stack) {
@@ -91,7 +91,7 @@ export const getToday = async (req: Request, res: Response) => {
     ];
 
     const supplements = await SupplementModel.find({ _id: { $in: allIds } })
-      .select('name dose_unit category')
+      .select('name default_dose dose_unit category')
       .lean();
 
     const supplementMap = new Map(supplements.map((s) => [s._id.toString(), s]));

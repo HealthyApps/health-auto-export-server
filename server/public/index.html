@@ -159,7 +159,7 @@
           <div class="stack-item">
             <span>
               <strong x-text="item.supplement?.name || 'Unknown'"></strong>
-              <small x-text="'(' + item.dose_quantity + ' ' + (item.supplement?.dose_unit || '') + ')'"></small>
+              <small x-text="item.supplement?.default_dose ? (item.supplement.default_dose + ' ' + (item.supplement.dose_unit || '')) + ' \u00d7 ' + item.dose_quantity : '(\u00d7' + item.dose_quantity + ')'"></small>
             </span>
             <button class="outline" @click="quickLogFromStack(item, slot)"
                     :aria-busy="item._logging">Log</button>
@@ -209,6 +209,8 @@
         <thead>
           <tr>
             <th>Supplement</th>
+            <th>Brand</th>
+            <th>Dose</th>
             <th>Remaining</th>
             <th>Purchased</th>
             <th>Unit Cost</th>
@@ -223,6 +225,12 @@
               <!-- Display row -->
               <template x-if="editingInvId !== inv._id">
                 <td x-text="inv.supplement_id?.name || '—'"></td>
+              </template>
+              <template x-if="editingInvId !== inv._id">
+                <td x-text="inv.brand || '—'"></td>
+              </template>
+              <template x-if="editingInvId !== inv._id">
+                <td x-text="inv.supplement_id?.default_dose ? (inv.supplement_id.default_dose + ' ' + (inv.supplement_id.dose_unit || '')) : '—'"></td>
               </template>
               <template x-if="editingInvId !== inv._id">
                 <td>
@@ -250,6 +258,12 @@
               <!-- Edit row -->
               <template x-if="editingInvId === inv._id">
                 <td x-text="inv.supplement_id?.name || '—'"></td>
+              </template>
+              <template x-if="editingInvId === inv._id">
+                <td><input type="text" x-model="editInvForm.brand" placeholder="Brand" style="width:100px;margin:0;padding:0.2rem;font-size:0.85rem;"></td>
+              </template>
+              <template x-if="editingInvId === inv._id">
+                <td x-text="inv.supplement_id?.default_dose ? (inv.supplement_id.default_dose + ' ' + (inv.supplement_id.dose_unit || '')) : '—'"></td>
               </template>
               <template x-if="editingInvId === inv._id">
                 <td><input type="number" x-model.number="editInvForm.pills_remaining" min="0" step="1" style="width:70px;margin:0;padding:0.2rem;font-size:0.85rem;"></td>
@@ -285,14 +299,19 @@
     <div class="inv-form-section">
       <h4>Add Inventory</h4>
       <form @submit.prevent="submitInventory()">
-        <label>Supplement
-          <select x-model="invForm.supplement_id" required>
-            <option value="">Select...</option>
-            <template x-for="s in supplements" :key="s._id">
-              <option :value="s._id" x-text="s.name"></option>
-            </template>
-          </select>
-        </label>
+        <div class="grid">
+          <label>Supplement
+            <select x-model="invForm.supplement_id" required>
+              <option value="">Select...</option>
+              <template x-for="s in supplements" :key="s._id">
+                <option :value="s._id" x-text="s.name + ' (' + s.default_dose + ' ' + s.dose_unit + ')'"></option>
+              </template>
+            </select>
+          </label>
+          <label>Brand (optional)
+            <input type="text" x-model="invForm.brand" placeholder="e.g. Thorne, NOW Foods">
+          </label>
+        </div>
         <div class="grid">
           <label>Quantity Purchased
             <input type="number" x-model.number="invForm.quantity_purchased" min="1" step="1" required>
@@ -531,14 +550,14 @@ function app() {
 
     // Inventory form
     invForm: {
-      supplement_id: '', quantity_purchased: 60, unit_cost: 0,
+      supplement_id: '', brand: '', quantity_purchased: 60, unit_cost: 0,
       purchase_date: new Date().toISOString().split('T')[0],
       expiration_date: '', submitting: false,
     },
 
     // Inventory inline editing
     editingInvId: null,
-    editInvForm: { pills_remaining: 0, quantity_purchased: 0, unit_cost: 0, purchase_date: '', expiration_date: '' },
+    editInvForm: { brand: '', pills_remaining: 0, quantity_purchased: 0, unit_cost: 0, purchase_date: '', expiration_date: '' },
     editInvSaving: false,
 
     // Stack view
@@ -657,10 +676,12 @@ function app() {
           unit_cost: this.invForm.unit_cost,
           purchase_date: this.invForm.purchase_date,
         };
+        if (this.invForm.brand.trim()) body.brand = this.invForm.brand.trim();
         if (this.invForm.expiration_date) body.expiration_date = this.invForm.expiration_date;
         await this.api('POST', '/supplement-inventory', body);
         this.showToast('Inventory added');
         this.invForm.supplement_id = '';
+        this.invForm.brand = '';
         this.invForm.quantity_purchased = 60;
         this.invForm.unit_cost = 0;
         this.invForm.expiration_date = '';
@@ -676,6 +697,7 @@ function app() {
     startEditInv(inv) {
       this.editingInvId = inv._id;
       this.editInvForm = {
+        brand: inv.brand || '',
         pills_remaining: inv.pills_remaining,
         quantity_purchased: inv.quantity_purchased,
         unit_cost: inv.unit_cost || 0,
@@ -692,6 +714,7 @@ function app() {
       this.editInvSaving = true;
       try {
         const body = {
+          brand: this.editInvForm.brand.trim() || null,
           pills_remaining: this.editInvForm.pills_remaining,
           quantity_purchased: this.editInvForm.quantity_purchased,
           unit_cost: this.editInvForm.unit_cost,

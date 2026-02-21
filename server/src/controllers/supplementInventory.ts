@@ -52,7 +52,7 @@ export const getInventory = async (req: Request, res: Response) => {
     }
 
     const inventory = await SupplementInventoryModel.find(query)
-      .populate('supplement_id', 'name dose_unit category')
+      .populate('supplement_id', 'name default_dose dose_unit category')
       .sort({ purchase_date: -1 })
       .lean();
 
@@ -66,7 +66,7 @@ export const getInventory = async (req: Request, res: Response) => {
 export const getInventoryById = async (req: Request, res: Response) => {
   try {
     const record = await SupplementInventoryModel.findById(req.params.id)
-      .populate('supplement_id', 'name dose_unit category')
+      .populate('supplement_id', 'name default_dose dose_unit category')
       .lean();
 
     if (!record) {

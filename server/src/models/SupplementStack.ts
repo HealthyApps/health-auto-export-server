@@ -14,6 +14,7 @@ export interface IDaySlots {
 export interface ISupplementStack extends Document {
   name: string;
   active: boolean;
+  activatedAt: Date | null;
   monday: IDaySlots;
   tuesday: IDaySlots;
   wednesday: IDaySlots;
@@ -48,6 +49,7 @@ const SupplementStackSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     active: { type: Boolean, required: true, default: true },
+    activatedAt: { type: Date, default: null },
     monday: { type: DaySlotsSchema, default: () => ({ ...emptyDay }) },
     tuesday: { type: DaySlotsSchema, default: () => ({ ...emptyDay }) },
     wednesday: { type: DaySlotsSchema, default: () => ({ ...emptyDay }) },

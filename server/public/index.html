@@ -1169,18 +1169,22 @@ function app() {
         cells.push({ key: 'e' + i, day: 0, stackName: '', isToday: false });
       }
 
-      // Find active stack name
+      // Find active stack and its activation date
       const activeStack = this.allStacks.find(s => s.active);
       const activeName = activeStack ? activeStack.name : '';
+      const activatedAt = activeStack?.activatedAt ? new Date(activeStack.activatedAt) : null;
+      // Normalize to start of activation day
+      if (activatedAt) activatedAt.setHours(0, 0, 0, 0);
 
       for (let d = 1; d <= lastDay.getDate(); d++) {
         const dateStr = `${this.calYear}-${String(this.calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const cellDate = new Date(this.calYear, this.calMonth, d);
         const isPast = cellDate <= today;
+        const isAfterActivation = activatedAt ? cellDate >= activatedAt : isPast;
         cells.push({
           key: dateStr,
           day: d,
-          stackName: isPast ? activeName : '',
+          stackName: (isPast && isAfterActivation) ? activeName : '',
           isToday: dateStr === todayStr,
         });
       }

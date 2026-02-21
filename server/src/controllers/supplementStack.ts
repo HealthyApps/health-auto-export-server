@@ -7,7 +7,7 @@ const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 
 export const getAllStacks = async (req: Request, res: Response) => {
   try {
     const stacks = await SupplementStackModel.find({})
-      .select('name active createdAt updatedAt')
+      .select('name active activatedAt createdAt updatedAt')
       .sort({ active: -1, name: 1 })
       .lean();
 
@@ -123,13 +123,14 @@ export const updateStack = async (req: Request, res: Response) => {
     }
 
     // Deactivate any existing active stacks
-    await SupplementStackModel.updateMany({ active: true }, { active: false });
+    await SupplementStackModel.updateMany({ active: true }, { active: false, activatedAt: null });
 
     const stack = await SupplementStackModel.findOneAndUpdate(
       { name },
       {
         name,
         active: true,
+        activatedAt: new Date(),
         monday: monday || { morning: [], noon: [], night: [] },
         tuesday: tuesday || { morning: [], noon: [], night: [] },
         wednesday: wednesday || { morning: [], noon: [], night: [] },

@@ -38,6 +38,34 @@
       justify-content: center; z-index: 1000;
     }
     .auth-box { background: var(--pico-background-color); padding: 2rem; border-radius: 0.5rem; max-width: 400px; width: 90%; }
+
+    /* Stack grid */
+    .stack-grid { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .stack-grid th, .stack-grid td { text-align: center; padding: 0.4rem 0.3rem; border: 1px solid var(--pico-muted-border-color); }
+    .stack-grid th { font-weight: 600; background: var(--pico-card-background-color); }
+    .stack-grid td:first-child { text-align: left; font-weight: 500; white-space: nowrap; }
+    .slot-indicator { font-size: 0.75rem; font-weight: 600; }
+    .slot-m { color: #e65100; }
+    .slot-n { color: #1565c0; }
+    .slot-ni { color: #6a1b9a; }
+
+    /* History compliance */
+    .day-group { margin-bottom: 1.5rem; }
+    .day-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 2px solid var(--pico-primary); }
+    .day-header h4 { margin: 0; }
+    .compliance-badge { font-size: 0.8rem; font-weight: 600; padding: 0.15rem 0.6rem; border-radius: 1rem; color: #fff; }
+    .compliance-full { background: #2e7d32; }
+    .compliance-partial { background: #f9a825; color: #333; }
+    .compliance-none { background: #c62828; }
+    .range-toggle { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    .range-toggle button { margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; }
+    .range-toggle input { margin: 0; max-width: 160px; }
+    .expected-item { color: var(--pico-muted-color); font-style: italic; font-size: 0.9rem; padding: 0.2rem 0; }
+    .expected-item .check { color: #2e7d32; font-style: normal; }
+    .expected-item .miss { color: #c62828; font-style: normal; }
+
+    /* Inventory form */
+    .inv-form-section { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--pico-muted-border-color); }
   </style>
 </head>
 <body>
@@ -68,8 +96,9 @@
     <ul>
       <li><a class="tab-btn" :aria-current="tab === 'today'" @click="tab = 'today'; loadToday()">Today</a></li>
       <li><a class="tab-btn" :aria-current="tab === 'log'" @click="tab = 'log'; loadSupplements()">Log Dose</a></li>
-      <li><a class="tab-btn" :aria-current="tab === 'inventory'" @click="tab = 'inventory'; loadInventory()">Inventory</a></li>
-      <li><a class="tab-btn" :aria-current="tab === 'history'" @click="tab = 'history'; loadHistory()">History</a></li>
+      <li><a class="tab-btn" :aria-current="tab === 'inventory'" @click="tab = 'inventory'; loadInventory(); loadSupplements()">Inventory</a></li>
+      <li><a class="tab-btn" :aria-current="tab === 'stack'" @click="tab = 'stack'; loadStack()">Stack</a></li>
+      <li><a class="tab-btn" :aria-current="tab === 'history'" @click="tab = 'history'; loadHistoryRange()">History</a></li>
     </ul>
   </nav>
 
@@ -159,27 +188,143 @@
       </table>
     </figure>
     <p x-show="inventory.length === 0">No inventory records.</p>
+
+    <!-- Add Inventory Form -->
+    <div class="inv-form-section">
+      <h4>Add Inventory</h4>
+      <form @submit.prevent="submitInventory()">
+        <label>Supplement
+          <select x-model="invForm.supplement_id" required>
+            <option value="">Select...</option>
+            <template x-for="s in supplements" :key="s._id">
+              <option :value="s._id" x-text="s.name"></option>
+            </template>
+          </select>
+        </label>
+        <div class="grid">
+          <label>Quantity Purchased
+            <input type="number" x-model.number="invForm.quantity_purchased" min="1" step="1" required>
+          </label>
+          <label>Unit Cost ($)
+            <input type="number" x-model.number="invForm.unit_cost" min="0" step="0.01" required>
+          </label>
+        </div>
+        <div class="grid">
+          <label>Purchase Date
+            <input type="date" x-model="invForm.purchase_date" required>
+          </label>
+          <label>Expiration Date (optional)
+            <input type="date" x-model="invForm.expiration_date">
+          </label>
+        </div>
+        <button type="submit" :aria-busy="invForm.submitting">Add Inventory</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- STACK TAB -->
+  <section x-show="tab === 'stack'">
+    <h3 x-text="stackData ? 'Stack — ' + (stackData.name || 'Active') : 'Weekly Stack'"></h3>
+    <template x-if="stackGrid.length > 0">
+      <figure>
+        <table class="stack-grid">
+          <thead>
+            <tr>
+              <th>Supplement</th>
+              <th>Mon</th>
+              <th>Tue</th>
+              <th>Wed</th>
+              <th>Thu</th>
+              <th>Fri</th>
+              <th>Sat</th>
+              <th>Sun</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="row in stackGrid" :key="row.name">
+              <tr>
+                <td x-text="row.name"></td>
+                <template x-for="day in ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']" :key="day">
+                  <td>
+                    <span x-show="row.days[day].morning" class="slot-indicator slot-m">M</span>
+                    <span x-show="row.days[day].noon" class="slot-indicator slot-n">N</span>
+                    <span x-show="row.days[day].night" class="slot-indicator slot-ni">Ni</span>
+                    <span x-show="!row.days[day].morning && !row.days[day].noon && !row.days[day].night" style="color:var(--pico-muted-color)">—</span>
+                  </td>
+                </template>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </figure>
+    </template>
+    <p x-show="stackGrid.length === 0 && !stackLoading">No active stack defined.</p>
+    <p x-show="stackLoading" aria-busy="true">Loading stack...</p>
+    <div style="margin-top:1rem; font-size:0.85rem; color:var(--pico-muted-color);">
+      <span class="slot-indicator slot-m">M</span> Morning &nbsp;
+      <span class="slot-indicator slot-n">N</span> Noon &nbsp;
+      <span class="slot-indicator slot-ni">Ni</span> Night
+    </div>
   </section>
 
   <!-- HISTORY TAB -->
   <section x-show="tab === 'history'">
-    <h3>Recent Doses (7 days)</h3>
-    <template x-for="log in history" :key="log._id">
-      <div class="log-entry">
-        <div>
-          <strong x-text="log.supplement_id?.name || 'Unknown'"></strong>
-          <small x-text="'— ' + log.dose_quantity + ' ' + (log.supplement_id?.dose_unit || '') + ' (' + log.slot + ')'"></small>
+    <h3>Dose History</h3>
+
+    <!-- Range controls -->
+    <div class="range-toggle">
+      <button :class="historyRange === 'week' ? '' : 'outline'" @click="historyRange = 'week'; loadHistoryRange()">Week</button>
+      <button :class="historyRange === 'month' ? '' : 'outline'" @click="historyRange = 'month'; loadHistoryRange()">Month</button>
+      <input type="date" x-model="historyAnchor" @change="loadHistoryRange()">
+      <button class="outline" @click="shiftRange(-1)">&#9664;</button>
+      <button class="outline" @click="shiftRange(1)">&#9654;</button>
+    </div>
+
+    <template x-for="dayGroup in historyDays" :key="dayGroup.date">
+      <div class="day-group">
+        <div class="day-header">
+          <h4 x-text="dayGroup.label"></h4>
+          <span class="compliance-badge"
+                :class="dayGroup.compliance >= 100 ? 'compliance-full' : dayGroup.compliance > 0 ? 'compliance-partial' : 'compliance-none'"
+                x-text="dayGroup.compliance + '%'"
+                x-show="dayGroup.expected > 0"></span>
         </div>
-        <div class="log-meta" x-text="fmtDateTime(log.timestamp)"></div>
+
+        <!-- Expected doses from stack -->
+        <template x-for="exp in dayGroup.expectedDoses" :key="exp.key">
+          <div class="expected-item">
+            <span :class="exp.taken ? 'check' : 'miss'" x-text="exp.taken ? '✓' : '✗'"></span>
+            <span x-text="exp.name + ' — ' + exp.slot + ' (' + exp.dose + ')'"></span>
+          </div>
+        </template>
+
+        <!-- Extra logged doses not in stack -->
+        <template x-for="log in dayGroup.extraLogs" :key="log._id">
+          <div class="log-entry">
+            <div>
+              <strong x-text="log.supplement_id?.name || 'Unknown'"></strong>
+              <small x-text="'— ' + log.dose_quantity + ' ' + (log.supplement_id?.dose_unit || '') + ' (' + log.slot + ')'"></small>
+            </div>
+            <div class="log-meta" x-text="fmtTime(log.timestamp)"></div>
+          </div>
+        </template>
+
+        <p x-show="dayGroup.expectedDoses.length === 0 && dayGroup.extraLogs.length === 0"
+           style="font-size:0.9rem; color:var(--pico-muted-color);">No doses expected or logged.</p>
       </div>
     </template>
-    <p x-show="history.length === 0">No doses logged in the last 7 days.</p>
+
+    <p x-show="historyDays.length === 0 && !historyLoading">No data for this period.</p>
+    <p x-show="historyLoading" aria-busy="true">Loading history...</p>
   </section>
 
 </main>
 
 <script>
 function app() {
+  const DAYS_ORDER = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+  const DAY_NAMES = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+
   return {
     tab: 'today',
     apiKey: localStorage.getItem('supp_api_key') || '',
@@ -190,6 +335,24 @@ function app() {
     inventory: [],
     history: [],
     logForm: { supplement_id: '', dose_quantity: 1, slot: 'morning', submitting: false },
+
+    // Inventory form
+    invForm: {
+      supplement_id: '', quantity_purchased: 60, unit_cost: 0,
+      purchase_date: new Date().toISOString().split('T')[0],
+      expiration_date: '', submitting: false,
+    },
+
+    // Stack view
+    stackData: null,
+    stackGrid: [],
+    stackLoading: false,
+
+    // History view
+    historyRange: 'week',
+    historyAnchor: new Date().toISOString().split('T')[0],
+    historyDays: [],
+    historyLoading: false,
 
     init() {
       if (this.apiKey) this.loadToday();
@@ -236,6 +399,12 @@ function app() {
       return new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     },
 
+    fmtTime(d) {
+      if (!d) return '';
+      return new Date(d).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    },
+
+    // --- Today ---
     async loadToday() {
       try {
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -247,24 +416,221 @@ function app() {
       }
     },
 
+    // --- Supplements list ---
     async loadSupplements() {
       try {
         this.supplements = await this.api('GET', '/supplements?active=true');
       } catch (e) { if (e.message !== 'Unauthorized') this.showToast(e.message, 'error'); }
     },
 
+    // --- Inventory ---
     async loadInventory() {
       try {
         this.inventory = await this.api('GET', '/supplement-inventory?active=true');
       } catch (e) { if (e.message !== 'Unauthorized') this.showToast(e.message, 'error'); }
     },
 
+    async submitInventory() {
+      if (!this.invForm.supplement_id) return;
+      this.invForm.submitting = true;
+      try {
+        const body = {
+          supplement_id: this.invForm.supplement_id,
+          quantity_purchased: this.invForm.quantity_purchased,
+          unit_cost: this.invForm.unit_cost,
+          purchase_date: this.invForm.purchase_date,
+        };
+        if (this.invForm.expiration_date) body.expiration_date = this.invForm.expiration_date;
+        await this.api('POST', '/supplement-inventory', body);
+        this.showToast('Inventory added');
+        this.invForm.supplement_id = '';
+        this.invForm.quantity_purchased = 60;
+        this.invForm.unit_cost = 0;
+        this.invForm.expiration_date = '';
+        this.loadInventory();
+      } catch (e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        this.invForm.submitting = false;
+      }
+    },
+
+    // --- Stack week view ---
+    async loadStack() {
+      this.stackLoading = true;
+      try {
+        const stack = await this.api('GET', '/supplement-stack');
+        this.stackData = stack;
+        this.stackGrid = this.buildStackGrid(stack);
+      } catch (e) {
+        if (e.message !== 'Unauthorized') {
+          this.stackData = null;
+          this.stackGrid = [];
+        }
+      } finally {
+        this.stackLoading = false;
+      }
+    },
+
+    buildStackGrid(stack) {
+      if (!stack) return [];
+      const suppMap = {}; // name -> { name, id, days: { monday: {morning,noon,night}, ... } }
+
+      for (const day of DAYS_ORDER) {
+        const dayData = stack[day];
+        if (!dayData) continue;
+        for (const slot of ['morning', 'noon', 'night']) {
+          const entries = dayData[slot] || [];
+          for (const entry of entries) {
+            const supp = entry.supplement_id;
+            const name = (typeof supp === 'object' && supp?.name) ? supp.name : String(supp);
+            if (!suppMap[name]) {
+              suppMap[name] = { name, days: {} };
+              for (const d of DAYS_ORDER) {
+                suppMap[name].days[d] = { morning: false, noon: false, night: false };
+              }
+            }
+            suppMap[name].days[day][slot] = true;
+          }
+        }
+      }
+      return Object.values(suppMap).sort((a, b) => a.name.localeCompare(b.name));
+    },
+
+    // --- History with compliance ---
     async loadHistory() {
       try {
         this.history = await this.api('GET', '/supplement-logs');
       } catch (e) { if (e.message !== 'Unauthorized') this.showToast(e.message, 'error'); }
     },
 
+    shiftRange(dir) {
+      const d = new Date(this.historyAnchor + 'T12:00:00');
+      if (this.historyRange === 'week') {
+        d.setDate(d.getDate() + dir * 7);
+      } else {
+        d.setMonth(d.getMonth() + dir);
+      }
+      this.historyAnchor = d.toISOString().split('T')[0];
+      this.loadHistoryRange();
+    },
+
+    async loadHistoryRange() {
+      this.historyLoading = true;
+      try {
+        const anchor = new Date(this.historyAnchor + 'T12:00:00');
+        let startDate, endDate;
+
+        if (this.historyRange === 'week') {
+          // Week: Monday through Sunday containing the anchor date
+          const dayOfWeek = anchor.getDay(); // 0=Sun
+          const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+          startDate = new Date(anchor);
+          startDate.setDate(anchor.getDate() + mondayOffset);
+          endDate = new Date(startDate);
+          endDate.setDate(startDate.getDate() + 6);
+        } else {
+          // Month: first to last day
+          startDate = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+          endDate = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+        }
+
+        const startStr = startDate.toISOString().split('T')[0];
+        const endStr = endDate.toISOString().split('T')[0];
+
+        // Load logs and stack in parallel
+        const [logs, stack] = await Promise.all([
+          this.api('GET', `/supplement-logs?start_date=${startStr}&end_date=${endStr}&limit=1000`),
+          this.stackData ? Promise.resolve(this.stackData) : this.api('GET', '/supplement-stack').catch(() => null),
+        ]);
+        if (!this.stackData && stack) {
+          this.stackData = stack;
+        }
+
+        this.historyDays = this.buildHistoryDays(startDate, endDate, logs, stack);
+      } catch (e) {
+        if (e.message !== 'Unauthorized') this.showToast(e.message, 'error');
+      } finally {
+        this.historyLoading = false;
+      }
+    },
+
+    buildHistoryDays(startDate, endDate, logs, stack) {
+      const days = [];
+      const current = new Date(startDate);
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+
+      while (current <= endDate && current <= today) {
+        const dateStr = current.toISOString().split('T')[0];
+        const dayName = DAY_NAMES[current.getDay()];
+
+        // Get expected doses from stack for this day
+        const expectedDoses = [];
+        if (stack && stack[dayName]) {
+          const dayStack = stack[dayName];
+          for (const slot of ['morning', 'noon', 'night']) {
+            for (const entry of (dayStack[slot] || [])) {
+              const supp = entry.supplement_id;
+              const name = (typeof supp === 'object' && supp?.name) ? supp.name : String(supp);
+              const suppId = (typeof supp === 'object' && supp?._id) ? supp._id : String(supp);
+              expectedDoses.push({
+                key: `${suppId}-${slot}`,
+                name,
+                suppId,
+                slot,
+                dose: entry.dose_quantity + ' ' + ((typeof supp === 'object' && supp?.dose_unit) || ''),
+                taken: false,
+              });
+            }
+          }
+        }
+
+        // Get logs for this day
+        const dayLogs = logs.filter(l => {
+          const logDate = new Date(l.timestamp).toISOString().split('T')[0];
+          return logDate === dateStr;
+        });
+
+        // Match logs to expected doses
+        const matchedLogIds = new Set();
+        for (const exp of expectedDoses) {
+          const match = dayLogs.find(l => {
+            const logSuppId = (typeof l.supplement_id === 'object' && l.supplement_id?._id) ? l.supplement_id._id : l.supplement_id;
+            return String(logSuppId) === String(exp.suppId) && l.slot === exp.slot && !matchedLogIds.has(l._id);
+          });
+          if (match) {
+            exp.taken = true;
+            matchedLogIds.add(match._id);
+          }
+        }
+
+        // Extra logs not matched to stack
+        const extraLogs = dayLogs.filter(l => !matchedLogIds.has(l._id));
+
+        const taken = expectedDoses.filter(e => e.taken).length;
+        const total = expectedDoses.length;
+        const compliance = total > 0 ? Math.round((taken / total) * 100) : 0;
+
+        const label = current.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+        days.push({
+          date: dateStr,
+          label,
+          dayName,
+          expectedDoses,
+          extraLogs,
+          expected: total,
+          compliance,
+        });
+
+        current.setDate(current.getDate() + 1);
+      }
+
+      return days.reverse(); // Most recent first
+    },
+
+    // --- Quick log from Today ---
     async quickLogFromStack(item, slot) {
       item._logging = true;
       try {
@@ -282,6 +648,7 @@ function app() {
       }
     },
 
+    // --- Log dose form ---
     async submitLog() {
       if (!this.logForm.supplement_id) return;
       this.logForm.submitting = true;

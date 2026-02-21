@@ -408,6 +408,32 @@
             </tbody>
           </table>
         </figure>
+        <h5>Add Supplement</h5>
+        <form @submit.prevent="submitNewSupp()">
+          <div class="grid">
+            <label>Name
+              <input type="text" x-model="newSuppForm.name" placeholder="e.g. Magnesium Glycinate" required>
+            </label>
+            <label>Default Dose
+              <input type="number" x-model.number="newSuppForm.default_dose" min="0" step="any" required>
+            </label>
+          </div>
+          <div class="grid">
+            <label>Dose Unit
+              <select x-model="newSuppForm.dose_unit" required>
+                <option value="">Select...</option>
+                <template x-for="u in doseUnits" :key="u"><option :value="u" x-text="u"></option></template>
+              </select>
+            </label>
+            <label>Category
+              <select x-model="newSuppForm.category" required>
+                <option value="">Select...</option>
+                <template x-for="c in categories" :key="c"><option :value="c" x-text="c"></option></template>
+              </select>
+            </label>
+          </div>
+          <button type="submit" :aria-busy="newSuppForm.submitting">Add Supplement</button>
+        </form>
       </div>
     </div>
   </section>
@@ -644,6 +670,7 @@ function app() {
     editSuppSaving: false,
     doseUnits: ['mg', 'mcg', 'g', 'iu', 'capsule', 'tablet', 'ml', 'drop', 'scoop'],
     categories: ['vitamin', 'mineral', 'amino_acid', 'herb', 'probiotic', 'omega', 'other'],
+    newSuppForm: { name: '', default_dose: 0, dose_unit: '', category: '', submitting: false },
 
     // Inventory inline editing
     editingInvId: null,
@@ -779,6 +806,29 @@ function app() {
         this.showToast(e.message, 'error');
       } finally {
         this.editSuppSaving = false;
+      }
+    },
+
+    async submitNewSupp() {
+      if (!this.newSuppForm.name || !this.newSuppForm.dose_unit || !this.newSuppForm.category) return;
+      this.newSuppForm.submitting = true;
+      try {
+        await this.api('POST', '/supplements', {
+          name: this.newSuppForm.name.trim(),
+          default_dose: this.newSuppForm.default_dose,
+          dose_unit: this.newSuppForm.dose_unit,
+          category: this.newSuppForm.category,
+        });
+        this.showToast('Supplement added');
+        this.newSuppForm.name = '';
+        this.newSuppForm.default_dose = 0;
+        this.newSuppForm.dose_unit = '';
+        this.newSuppForm.category = '';
+        this.loadSupplements();
+      } catch (e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        this.newSuppForm.submitting = false;
       }
     },
 

@@ -7,14 +7,14 @@ import {
   updateSupplement,
   deleteSupplement,
 } from '../controllers/supplements';
-import { requireReadAuth, requireWriteAuth } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 
 const router = express.Router();
 
-router.get('/', requireReadAuth, getSupplements);
-router.get('/:id', requireReadAuth, getSupplement);
-router.post('/', requireWriteAuth, createSupplement);
-router.put('/:id', requireWriteAuth, updateSupplement);
-router.delete('/:id', requireWriteAuth, deleteSupplement);
+router.get('/', requireAuth, getSupplements);
+router.get('/:id', requireAuth, getSupplement);
+router.post('/', requireAuth, createSupplement);
+router.put('/:id', requireAuth, updateSupplement);
+router.delete('/:id', requireAuth, deleteSupplement);
 
 export default router;

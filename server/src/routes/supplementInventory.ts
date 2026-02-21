@@ -7,14 +7,14 @@ import {
   updateInventory,
   deleteInventory,
 } from '../controllers/supplementInventory';
-import { requireReadAuth, requireWriteAuth } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 
 const router = express.Router();
 
-router.get('/', requireReadAuth, getInventory);
-router.get('/:id', requireReadAuth, getInventoryById);
-router.post('/', requireWriteAuth, createInventory);
-router.put('/:id', requireWriteAuth, updateInventory);
-router.delete('/:id', requireWriteAuth, deleteInventory);
+router.get('/', requireAuth, getInventory);
+router.get('/:id', requireAuth, getInventoryById);
+router.post('/', requireAuth, createInventory);
+router.put('/:id', requireAuth, updateInventory);
+router.delete('/:id', requireAuth, deleteInventory);
 
 export default router;

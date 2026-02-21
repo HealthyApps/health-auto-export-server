@@ -49,6 +49,21 @@
     .slot-n { color: #1565c0; }
     .slot-ni { color: #6a1b9a; }
 
+    /* Slot group headers in stack grid */
+    .slot-group-header {
+      font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 0.4rem 0.5rem; border-bottom: 2px solid;
+    }
+    .slot-group-morning { color: #e65100; border-color: #e65100; background: rgba(230, 81, 0, 0.05); }
+    .slot-group-noon { color: #1565c0; border-color: #1565c0; background: rgba(21, 101, 192, 0.05); }
+    .slot-group-night { color: #6a1b9a; border-color: #6a1b9a; background: rgba(106, 27, 154, 0.05); }
+    .stack-grid-inner { margin: 0; border: none; }
+    .stack-grid-inner td:first-child { width: 40%; }
+    .slot-check { font-size: 0.85rem; font-weight: 700; }
+    .slot-check-morning { color: #e65100; }
+    .slot-check-noon { color: #1565c0; }
+    .slot-check-night { color: #6a1b9a; }
+
     /* History compliance */
     .day-group { margin-bottom: 1.5rem; }
     .day-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 2px solid var(--pico-primary); }
@@ -493,7 +508,7 @@
       </div>
     </div>
 
-    <template x-if="stackGrid.length > 0">
+    <template x-if="!stackGridEmpty">
       <figure>
         <table class="stack-grid">
           <thead>
@@ -509,33 +524,39 @@
             </tr>
           </thead>
           <tbody>
-            <template x-for="row in stackGrid" :key="row.name">
-              <tr :style="!hasStock(row.suppId) ? 'opacity:0.6' : ''">
-                <td>
-                  <span x-text="row.name"></span>
-                  <span class="oos-badge" x-show="!hasStock(row.suppId)">no stock</span>
-                </td>
-                <template x-for="day in ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']" :key="day">
-                  <td>
-                    <span x-show="row.days[day].morning" class="slot-indicator slot-m">M</span>
-                    <span x-show="row.days[day].noon" class="slot-indicator slot-n">N</span>
-                    <span x-show="row.days[day].night" class="slot-indicator slot-ni">Ni</span>
-                    <span x-show="!row.days[day].morning && !row.days[day].noon && !row.days[day].night" style="color:var(--pico-muted-color)">—</span>
+            <template x-for="group in stackGrid" :key="group.slot">
+              <template x-if="group.rows.length > 0">
+                <tr>
+                  <td colspan="8" style="padding:0;">
+                    <!-- Slot header -->
+                    <div class="slot-group-header" :class="'slot-group-' + group.slot" x-text="group.label"></div>
+                    <!-- Rows within this slot -->
+                    <table class="stack-grid stack-grid-inner">
+                      <template x-for="row in group.rows" :key="row.name">
+                        <tr :style="!hasStock(row.suppId) ? 'opacity:0.6' : ''">
+                          <td>
+                            <span x-text="row.name"></span>
+                            <span class="oos-badge" x-show="!hasStock(row.suppId)">no stock</span>
+                          </td>
+                          <template x-for="day in ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']" :key="day">
+                            <td>
+                              <span x-show="row.days[day]" class="slot-check" :class="'slot-check-' + group.slot">&#10003;</span>
+                              <span x-show="!row.days[day]" style="color:var(--pico-muted-color)">—</span>
+                            </td>
+                          </template>
+                        </tr>
+                      </template>
+                    </table>
                   </td>
-                </template>
-              </tr>
+                </tr>
+              </template>
             </template>
           </tbody>
         </table>
       </figure>
     </template>
-    <p x-show="stackGrid.length === 0 && !stackLoading && !stackEditing">No active stack defined.</p>
+    <p x-show="stackGridEmpty && !stackLoading && !stackEditing">No active stack defined.</p>
     <p x-show="stackLoading" aria-busy="true">Loading stack...</p>
-    <div x-show="stackGrid.length > 0" style="margin-top:1rem; font-size:0.85rem; color:var(--pico-muted-color);">
-      <span class="slot-indicator slot-m">M</span> Morning &nbsp;
-      <span class="slot-indicator slot-n">N</span> Noon &nbsp;
-      <span class="slot-indicator slot-ni">Ni</span> Night
-    </div>
 
     <!-- Month Calendar View -->
     <div class="month-calendar" x-show="allStacks.length > 0">
@@ -965,6 +986,10 @@ function app() {
       }
     },
 
+    get stackGridEmpty() {
+      return this.stackGrid.length === 0 || this.stackGrid.every(g => g.rows.length === 0);
+    },
+
     // --- Stack week view ---
     async loadStack() {
       this.stackLoading = true;
@@ -984,7 +1009,9 @@ function app() {
 
     buildStackGrid(stack) {
       if (!stack) return [];
-      const suppMap = {}; // name -> { name, suppId, days: { monday: {morning,noon,night}, ... } }
+
+      // Group by slot: { morning: { name -> { name, suppId, days: {mon: bool, ...} } }, ... }
+      const slotGroups = { morning: {}, noon: {}, night: {} };
 
       for (const day of DAYS_ORDER) {
         const dayData = stack[day];
@@ -995,17 +1022,20 @@ function app() {
             const supp = entry.supplement_id;
             const name = (typeof supp === 'object' && supp?.name) ? supp.name : String(supp);
             const suppId = (typeof supp === 'object' && supp?._id) ? supp._id : String(supp);
-            if (!suppMap[name]) {
-              suppMap[name] = { name, suppId, days: {} };
-              for (const d of DAYS_ORDER) {
-                suppMap[name].days[d] = { morning: false, noon: false, night: false };
-              }
+            if (!slotGroups[slot][name]) {
+              slotGroups[slot][name] = { name, suppId, days: {} };
+              for (const d of DAYS_ORDER) slotGroups[slot][name].days[d] = false;
             }
-            suppMap[name].days[day][slot] = true;
+            slotGroups[slot][name].days[day] = true;
           }
         }
       }
-      return Object.values(suppMap).sort((a, b) => a.name.localeCompare(b.name));
+
+      return [
+        { slot: 'morning', label: 'Morning', rows: Object.values(slotGroups.morning).sort((a, b) => a.name.localeCompare(b.name)) },
+        { slot: 'noon', label: 'Noon', rows: Object.values(slotGroups.noon).sort((a, b) => a.name.localeCompare(b.name)) },
+        { slot: 'night', label: 'Night', rows: Object.values(slotGroups.night).sort((a, b) => a.name.localeCompare(b.name)) },
+      ];
     },
 
     // --- Stack editor ---

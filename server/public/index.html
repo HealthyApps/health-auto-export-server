@@ -344,6 +344,72 @@
         <button type="submit" :aria-busy="invForm.submitting">Add Inventory</button>
       </form>
     </div>
+
+    <!-- Manage Supplements -->
+    <div class="inv-form-section">
+      <h4 style="cursor:pointer;" @click="showSuppMgmt = !showSuppMgmt">
+        Manage Supplements <small x-text="showSuppMgmt ? '▾' : '▸'" style="font-size:0.8rem;"></small>
+      </h4>
+      <div x-show="showSuppMgmt">
+        <figure>
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Dose</th><th>Unit</th><th>Category</th><th></th></tr>
+            </thead>
+            <tbody>
+              <template x-for="s in supplements" :key="s._id">
+                <tr>
+                  <template x-if="editingSuppId !== s._id">
+                    <td x-text="s.name"></td>
+                  </template>
+                  <template x-if="editingSuppId !== s._id">
+                    <td x-text="s.default_dose"></td>
+                  </template>
+                  <template x-if="editingSuppId !== s._id">
+                    <td x-text="s.dose_unit"></td>
+                  </template>
+                  <template x-if="editingSuppId !== s._id">
+                    <td x-text="s.category"></td>
+                  </template>
+                  <template x-if="editingSuppId !== s._id">
+                    <td><button class="outline" style="margin:0;padding:0.2rem 0.5rem;font-size:0.8rem;" @click="startEditSupp(s)">Edit</button></td>
+                  </template>
+
+                  <template x-if="editingSuppId === s._id">
+                    <td><input type="text" x-model="editSuppForm.name" style="width:120px;margin:0;padding:0.2rem;font-size:0.85rem;"></td>
+                  </template>
+                  <template x-if="editingSuppId === s._id">
+                    <td><input type="number" x-model.number="editSuppForm.default_dose" min="0" step="any" style="width:70px;margin:0;padding:0.2rem;font-size:0.85rem;"></td>
+                  </template>
+                  <template x-if="editingSuppId === s._id">
+                    <td>
+                      <select x-model="editSuppForm.dose_unit" style="margin:0;padding:0.2rem;font-size:0.85rem;">
+                        <template x-for="u in doseUnits" :key="u"><option :value="u" x-text="u"></option></template>
+                      </select>
+                    </td>
+                  </template>
+                  <template x-if="editingSuppId === s._id">
+                    <td>
+                      <select x-model="editSuppForm.category" style="margin:0;padding:0.2rem;font-size:0.85rem;">
+                        <template x-for="c in categories" :key="c"><option :value="c" x-text="c"></option></template>
+                      </select>
+                    </td>
+                  </template>
+                  <template x-if="editingSuppId === s._id">
+                    <td>
+                      <div class="inv-edit-actions">
+                        <button @click="saveEditSupp()" :aria-busy="editSuppSaving" style="margin:0;padding:0.2rem 0.5rem;font-size:0.8rem;">Save</button>
+                        <button class="outline secondary" @click="editingSuppId = null" style="margin:0;padding:0.2rem 0.5rem;font-size:0.8rem;">Cancel</button>
+                      </div>
+                    </td>
+                  </template>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </figure>
+      </div>
+    </div>
   </section>
 
   <!-- STACK TAB -->
@@ -571,6 +637,14 @@ function app() {
       expiration_date: '', submitting: false,
     },
 
+    // Supplement management
+    showSuppMgmt: false,
+    editingSuppId: null,
+    editSuppForm: { name: '', default_dose: 0, dose_unit: '', category: '' },
+    editSuppSaving: false,
+    doseUnits: ['mg', 'mcg', 'g', 'iu', 'capsule', 'tablet', 'ml', 'drop', 'scoop'],
+    categories: ['vitamin', 'mineral', 'amino_acid', 'herb', 'probiotic', 'omega', 'other'],
+
     // Inventory inline editing
     editingInvId: null,
     editInvForm: { supplement_id: '', brand: '', pills_remaining: 0, quantity_purchased: 0, unit_cost: 0, purchase_date: '', expiration_date: '' },
@@ -682,6 +756,30 @@ function app() {
       try {
         this.supplements = await this.api('GET', '/supplements?active=true');
       } catch (e) { if (e.message !== 'Unauthorized') this.showToast(e.message, 'error'); }
+    },
+
+    startEditSupp(s) {
+      this.editingSuppId = s._id;
+      this.editSuppForm = {
+        name: s.name,
+        default_dose: s.default_dose,
+        dose_unit: s.dose_unit,
+        category: s.category,
+      };
+    },
+
+    async saveEditSupp() {
+      this.editSuppSaving = true;
+      try {
+        await this.api('PUT', `/supplements/${this.editingSuppId}`, this.editSuppForm);
+        this.showToast('Supplement updated');
+        this.editingSuppId = null;
+        this.loadSupplements();
+      } catch (e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        this.editSuppSaving = false;
+      }
     },
 
     // --- Inventory ---

@@ -188,7 +188,14 @@
     <h3 x-text="'Today — ' + (todayData.day || '...')"></h3>
     <template x-for="slot in ['morning', 'noon', 'night']" :key="slot">
       <div class="slot-group" x-show="todayData[slot] && todayData[slot].length > 0">
-        <h4 x-text="slot"></h4>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h4 x-text="slot" style="margin:0;"></h4>
+          <button class="outline" style="margin:0;padding:0.2rem 0.6rem;font-size:0.8rem;"
+                  @click="logSection(slot)"
+                  :aria-busy="sectionLogging[slot]"
+                  :disabled="sectionAllLogged(slot)"
+                  x-text="sectionAllLogged(slot) ? 'All Logged' : 'Log Section'"></button>
+        </div>
         <template x-for="item in (todayData[slot] || [])" :key="item.supplement_id">
           <div class="stack-item"
                :class="{
@@ -785,6 +792,9 @@ function app() {
       night: { supplement_id: '', dose_quantity: 1 },
     },
 
+    // Section logging
+    sectionLogging: { morning: false, noon: false, night: false },
+
     // History view
     historyRange: 'week',
     historyAnchor: new Date().toISOString().split('T')[0],
@@ -997,6 +1007,7 @@ function app() {
           quantity_purchased: this.editInvForm.quantity_purchased,
           unit_cost: this.editInvForm.unit_cost,
           purchase_date: this.editInvForm.purchase_date,
+          active: this.editInvForm.pills_remaining > 0,
         };
         if (this.editInvForm.expiration_date) {
           body.expiration_date = this.editInvForm.expiration_date;
@@ -1483,6 +1494,45 @@ function app() {
         this.showToast(e.message, 'error');
       } finally {
         item._logging = false;
+      }
+    },
+
+    // --- Log section (all items in a slot) ---
+    sectionAllLogged(slot) {
+      const items = this.todayData[slot] || [];
+      if (items.length === 0) return true;
+      return items.every(item => {
+        const suppId = item.supplement_id?._id || item.supplement_id;
+        return this.isTodayLogged(suppId, slot) || !this.hasStock(suppId);
+      });
+    },
+
+    async logSection(slot) {
+      const items = (this.todayData[slot] || []).filter(item => {
+        const suppId = item.supplement_id?._id || item.supplement_id;
+        return !this.isTodayLogged(suppId, slot) && this.hasStock(suppId);
+      });
+      if (items.length === 0) return;
+
+      this.sectionLogging[slot] = true;
+      let logged = 0;
+      try {
+        for (const item of items) {
+          const suppId = item.supplement_id?._id || item.supplement_id;
+          await this.api('POST', '/supplement-logs', {
+            supplement_id: suppId,
+            dose_quantity: item.dose_quantity,
+            slot,
+          });
+          this.todayLoggedKeys.add(String(suppId) + ':' + slot);
+          logged++;
+        }
+        this.showToast(`Logged ${logged} ${slot} supplement${logged > 1 ? 's' : ''}`);
+        this.loadInventory();
+      } catch (e) {
+        this.showToast(e.message, 'error');
+      } finally {
+        this.sectionLogging[slot] = false;
       }
     },
 

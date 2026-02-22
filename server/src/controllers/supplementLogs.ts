@@ -110,6 +110,10 @@ export const getLogs = async (req: Request, res: Response) => {
     const query: Record<string, unknown> = {};
 
     const endDate = end_date ? new Date(end_date as string) : new Date();
+    // When end_date is a date-only string (no time), set to end of that UTC day
+    if (end_date && !(end_date as string).includes('T')) {
+      endDate.setUTCHours(23, 59, 59, 999);
+    }
     const startDate = start_date
       ? new Date(start_date as string)
       : new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);

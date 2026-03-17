@@ -44,6 +44,7 @@ services:
       - MONGO_PASSWORD=${MONGO_PASSWORD}
       - READ_TOKEN=${READ_TOKEN}
       - WRITE_TOKEN=${WRITE_TOKEN}
+      - SERVER_PORT=${SERVER_PORT}
     depends_on:
       - hae-mongo
     networks:
@@ -55,6 +56,4 @@ networks:
     driver: bridge
 
 volumes:
-  postgres-data:
-  grafana-data:
   mongodb-data:

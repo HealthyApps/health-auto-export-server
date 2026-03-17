@@ -8,7 +8,7 @@ import workoutsRouter from './routes/workouts';
 import { requireReadAuth, requireWriteAuth } from './middleware/auth';
 
 const app = express();
-const port = 3001;
+const port = process.env.SERVER_PORT || 3001;
 
 mongodb.connect();
 
